@@ -28,37 +28,37 @@ export const ZoomControls: React.FC<ZoomControlsProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-2 bg-gray-800/80 backdrop-blur-sm rounded-lg p-2">
+    <div className="flex flex-col gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-2 border border-gray-200 shadow-sm">
       <Button
         variant="outline"
         size="sm"
         onClick={handleZoomIn}
         disabled={disabled || zoom >= 3}
-        className="border-gray-600 hover:border-gray-500"
+        className="border-gray-300 text-gray-700 hover:bg-gray-50"
       >
         <ZoomIn className="w-4 h-4" />
       </Button>
-      
-      <div className="text-xs text-center text-gray-400 px-2">
+
+      <div className="text-xs text-center text-gray-600 px-2">
         {Math.round(zoom * 100)}%
       </div>
-      
+
       <Button
         variant="outline"
         size="sm"
         onClick={handleZoomOut}
         disabled={disabled || zoom <= 0.5}
-        className="border-gray-600 hover:border-gray-500"
+        className="border-gray-300 text-gray-700 hover:bg-gray-50"
       >
         <ZoomOut className="w-4 h-4" />
       </Button>
-      
+
       <Button
         variant="outline"
         size="sm"
         onClick={handleResetZoom}
         disabled={disabled || zoom === 1}
-        className="border-gray-600 hover:border-gray-500"
+        className="border-gray-300 text-gray-700 hover:bg-gray-50"
       >
         <RotateCcw className="w-4 h-4" />
       </Button>

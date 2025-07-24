@@ -11,12 +11,19 @@ export interface InpaintingResponse {
   error?: string;
 }
 
+export type AIProvider = 'iopaint';
+
+export interface ProviderConfig {
+  apiKey?: string;
+  baseUrl?: string;
+}
+
 // Unified API service that uses Next.js API route to avoid CORS
 export class UnifiedInpaintingService {
   async removeObjects(
     request: InpaintingRequest,
-    provider: 'replicate' | 'huggingface' | 'local',
-    config: { apiKey?: string; baseUrl?: string }
+    provider: AIProvider,
+    config: ProviderConfig
   ): Promise<InpaintingResponse> {
     try {
       const formData = new FormData();
@@ -35,10 +42,10 @@ export class UnifiedInpaintingService {
       if (config.baseUrl) {
         formData.append('baseUrl', config.baseUrl);
       }
-
       const response = await fetch('/api/inpaint', {
         method: 'POST',
-        body: formData
+        body: formData,
+        cache: 'no-cache'
       });
 
       if (!response.ok) {

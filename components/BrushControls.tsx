@@ -21,21 +21,21 @@ export const BrushControls: React.FC<BrushControlsProps> = ({
   disabled = false
 }) => {
   return (
-    <Card className="p-4 bg-gray-800/30 border-gray-700">
+    <Card className="p-4 bg-white border-gray-200 shadow-sm">
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <Paintbrush className="w-4 h-4 text-blue-400" />
-          <h3 className="font-medium">Brush Settings</h3>
+          <Paintbrush className="w-4 h-4 text-blue-600" />
+          <h3 className="font-medium text-gray-800">Brush Settings</h3>
         </div>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label className="text-sm font-medium">
+            <Label className="text-sm text-gray-700 font-medium">
               Size: {settings.size}px
             </Label>
             <Slider
               value={[settings.size]}
-              onValueChange={([value]) => 
+              onValueChange={([value]) =>
                 onSettingsChange({ ...settings, size: value })
               }
               min={5}
@@ -47,12 +47,12 @@ export const BrushControls: React.FC<BrushControlsProps> = ({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-sm font-medium">
+            <Label className="text-sm text-gray-700 font-medium">
               Opacity: {settings.opacity}%
             </Label>
             <Slider
               value={[settings.opacity]}
-              onValueChange={([value]) => 
+              onValueChange={([value]) =>
                 onSettingsChange({ ...settings, opacity: value })
               }
               min={10}
@@ -65,8 +65,8 @@ export const BrushControls: React.FC<BrushControlsProps> = ({
 
           {/* Brush Preview */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Preview</Label>
-            <div className="h-16 bg-gray-700/50 rounded-lg flex items-center justify-center">
+            <Label className="text-sm font-medium text-gray-700">Preview</Label>
+            <div className="h-16 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200">
               <div
                 className="rounded-full bg-red-500"
                 style={{

@@ -1,62 +1,89 @@
-# AI-Powered Image Object Remover
+# Magic Eraser - AI-Powered Image Inpainting
 
-A professional-grade web application for removing unwanted objects from images using AI inpainting technology.
+A professional-grade web application for removing unwanted objects from images using AI inpainting technology. Now supports 5 different AI providers including free and premium options!
 
-## Features
+## ✨ Features
 
-- **Canvas-based Image Editor**: Precision brush tools with adjustable size and opacity
-- **AI-Powered Object Removal**: Integration with multiple AI services for seamless object removal
-- **Multiple AI Providers**: Support for Replicate, Hugging Face, and local/self-hosted APIs
-- **Responsive Design**: Works flawlessly across desktop, tablet, and mobile devices
-- **Advanced Editing Tools**: Zoom in/out, undo/redo, and touch support for mobile
+- **Magic Eraser**: Remove unwanted objects with AI precision
+- **5 AI Providers**: ClipDrop, OpenAI, Hugging Face, Replicate, and IOPaint
+- **Free & Paid Options**: From completely free to premium quality
+- **Canvas Editor**: Precision brush tools with adjustable size and opacity
+- **Easy Setup**: Guided configuration with automatic setup scripts
+- **Privacy Options**: Local processing with IOPaint
 - **Professional UI**: Clean, modern interface with intuitive controls
+- **Cross-platform**: Works on desktop, tablet, and mobile devices
 
-## Supported AI Services
+## 🎯 AI Provider Options
 
-### 1. Replicate API (Recommended)
-- **Model**: Stable Diffusion Inpainting
-- **Quality**: High-quality results
+### 🆓 Free Options
+
+#### 1. Hugging Face (Best for Beginners)
+- **Cost**: Free with rate limits
+- **Quality**: Good ⭐⭐⭐
+- **Speed**: Slow ⭐⭐
+- **Setup**: Just need a free account
+- **Best for**: Testing and learning
+
+#### 2. IOPaint (Best Free Option)
+- **Cost**: Completely free
+- **Quality**: Good ⭐⭐⭐
+- **Speed**: Fast ⭐⭐⭐⭐
+- **Setup**: Local installation (automated scripts provided)
+- **Best for**: Privacy, unlimited usage, no API costs
+
+### 💰 Premium Options (Higher Quality)
+
+#### 3. ClipDrop (Recommended for Production)
+- **Cost**: ~$0.02-0.05 per image
+- **Quality**: Excellent ⭐⭐⭐⭐⭐
+- **Speed**: Very Fast ⭐⭐⭐⭐⭐
+- **Setup**: API key required
+- **Best for**: Professional use, highest quality
+
+#### 4. OpenAI DALL-E 3
+- **Cost**: ~$0.04-0.08 per image
+- **Quality**: Excellent ⭐⭐⭐⭐⭐
+- **Speed**: Medium ⭐⭐⭐⭐
+- **Setup**: OpenAI account required
+- **Best for**: Creative editing, artistic results
+
+#### 5. Replicate
 - **Cost**: ~$0.01-0.05 per image
-- **Setup**: 
-  1. Sign up at [replicate.com](https://replicate.com)
-  2. Get API key from [Account → API Tokens](https://replicate.com/account/api-tokens)
-  3. Configure in app settings
+- **Quality**: Very Good ⭐⭐⭐⭐
+- **Speed**: Medium ⭐⭐⭐
+- **Setup**: Replicate account required
+- **Best for**: Flexible model selection, good balance
 
-### 2. Hugging Face Inference API
-- **Model**: runwayml/stable-diffusion-inpainting
-- **Quality**: Good results with rate limits
-- **Cost**: Free tier available
-- **Setup**:
-  1. Sign up at [huggingface.co](https://huggingface.co)
-  2. Get API key from [Settings → Access Tokens](https://huggingface.co/settings/tokens)
-  3. Configure in app settings
+## 🚀 Quick Setup
 
-### 3. Local/Self-hosted API
-- **Model**: Your own Stable Diffusion setup
-- **Quality**: Depends on your hardware
-- **Cost**: Free (after setup)
-- **Setup**: See local server setup below
+### Option 1: IOPaint (Free, Local)
+**Automated setup scripts provided!**
 
-## Local Server Setup
-
-For maximum control and privacy, you can run the AI model locally:
-
-### Requirements
+**For macOS/Linux:**
 ```bash
-pip install fastapi uvicorn torch torchvision diffusers pillow python-multipart
+./setup-iopaint.sh
+./start_iopaint.sh
 ```
 
-### Running the Local Server
-```bash
-python lib/local-inpainting-server.py
+**For Windows:**
+```cmd
+setup-iopaint.bat
+start_iopaint.bat
 ```
 
-The server will be available at `http://localhost:8000`
+**Manual setup:**
+```bash
+pip install iopaint
+iopaint start --model=lama --port=8080
+```
 
-### Hardware Requirements
-- **Minimum**: 8GB RAM, CPU-only (slow)
-- **Recommended**: 16GB RAM, NVIDIA GPU with 6GB+ VRAM
-- **Optimal**: 32GB RAM, NVIDIA RTX 3080/4080 or better
+### Option 2: Cloud APIs
+1. Open the app at http://localhost:3001
+2. Click "API Settings"
+3. Choose your preferred provider
+4. Follow the setup guide for your chosen provider
+
+See `API_SETUP_GUIDE.md` for detailed instructions for each provider.
 
 ## Getting Started
 

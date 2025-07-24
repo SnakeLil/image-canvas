@@ -5,12 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
-import { ExternalLink, Key, Server, Zap } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ExternalLink, Server, Download, Play } from 'lucide-react';
 
 interface APIConfig {
-  provider: 'replicate' | 'huggingface' | 'local';
+  provider: 'iopaint';
   apiKey: string;
   baseUrl: string;
 }
@@ -35,175 +35,134 @@ export const APIConfigModal: React.FC<APIConfigModalProps> = ({
     onClose();
   };
 
-  const providerInfo = {
-    replicate: {
-      name: 'Replicate',
-      description: 'High-quality Stable Diffusion inpainting',
-      signupUrl: 'https://replicate.com',
-      keyUrl: 'https://replicate.com/account/api-tokens',
-      icon: <Zap className="w-5 h-5 text-blue-400" />
-    },
-    huggingface: {
-      name: 'Hugging Face',
-      description: 'Free inference API with rate limits',
-      signupUrl: 'https://huggingface.co',
-      keyUrl: 'https://huggingface.co/settings/tokens',
-      icon: <Key className="w-5 h-5 text-yellow-400" />
-    },
-    local: {
-      name: 'Local/Self-hosted',
-      description: 'Your own inpainting API server',
-      signupUrl: '',
-      keyUrl: '',
-      icon: <Server className="w-5 h-5 text-green-400" />
-    }
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl bg-gray-800 border-gray-700">
+      <DialogContent className="sm:max-w-2xl bg-white border-gray-200 max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-white">API Configuration</DialogTitle>
+          <DialogTitle className="text-xl font-semibold text-gray-800">IOPaint Configuration</DialogTitle>
+          <p className="text-gray-600 text-sm">Configure your local IOPaint server for image inpainting</p>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Provider Selection */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">AI Provider</Label>
-            <Select
-              value={tempConfig.provider}
-              onValueChange={(value: 'replicate' | 'huggingface' | 'local') =>
-                setTempConfig({ ...tempConfig, provider: value })
-              }
-            >
-              <SelectTrigger className="bg-gray-700 border-gray-600">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-700 border-gray-600">
-                {Object.entries(providerInfo).map(([key, info]) => (
-                  <SelectItem key={key} value={key} className="text-white">
-                    <div className="flex items-center gap-2">
-                      {info.icon}
-                      {info.name}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Provider Info Card */}
-          <Card className="p-4 bg-gray-700/50 border-gray-600">
-            <div className="flex items-start gap-3">
-              {providerInfo[tempConfig.provider].icon}
+          {/* IOPaint Info Card */}
+          <Card className="p-4 bg-green-50 border-green-200">
+            <div className="flex items-start gap-4">
+              <Server className="w-6 h-6 text-green-600 mt-1" />
               <div className="flex-1">
-                <h3 className="font-medium text-white mb-1">
-                  {providerInfo[tempConfig.provider].name}
-                </h3>
-                <p className="text-sm text-gray-400 mb-3">
-                  {providerInfo[tempConfig.provider].description}
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="font-medium text-gray-800">IOPaint (Local Server)</h3>
+                  <Badge className="bg-green-500 text-white text-xs">Free & Open Source</Badge>
+                </div>
+                <p className="text-sm text-gray-600 mb-3">
+                  Free, open-source local inpainting server. No API keys required, runs completely offline.
                 </p>
-                
-                {tempConfig.provider !== 'local' && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(providerInfo[tempConfig.provider].signupUrl, '_blank')}
-                      className="border-gray-600 hover:border-gray-500"
-                    >
-                      <ExternalLink className="w-3 h-3 mr-1" />
-                      Sign Up
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(providerInfo[tempConfig.provider].keyUrl, '_blank')}
-                      className="border-gray-600 hover:border-gray-500"
-                    >
-                      <Key className="w-3 h-3 mr-1" />
-                      Get API Key
-                    </Button>
+
+                {/* Features */}
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500 mb-1">Cost</div>
+                    <div className="text-sm font-medium text-green-600">Free</div>
                   </div>
-                )}
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500 mb-1">Privacy</div>
+                    <div className="text-sm font-medium text-blue-600">100% Local</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500 mb-1">Speed</div>
+                    <div className="text-sm font-medium text-purple-600">Fast</div>
+                  </div>
+                </div>
+
+                {/* Setup Instructions */}
+                <div className="bg-white rounded-lg p-3 border border-green-200">
+                  <h4 className="text-sm font-medium text-gray-800 mb-2">Quick Setup:</h4>
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <Download className="w-4 h-4 text-green-600" />
+                      <span>Run: <code className="bg-gray-100 px-1 rounded">./setup-iopaint.sh</code></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Play className="w-4 h-4 text-green-600" />
+                      <span>Start: <code className="bg-gray-100 px-1 rounded">./start_iopaint.sh</code></span>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-green-200">
+                    <a
+                      href="https://github.com/Sanster/IOPaint"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-green-600 hover:text-green-700"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      View Setup Guide
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
           </Card>
 
-          {/* Configuration Fields */}
-          {tempConfig.provider !== 'local' ? (
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">API Key</Label>
+          {/* Configuration */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="baseUrl" className="text-sm font-medium text-gray-700">
+                IOPaint Server URL
+              </Label>
               <Input
-                type="password"
-                placeholder="Enter your API key"
-                value={tempConfig.apiKey}
-                onChange={(e) => setTempConfig({ ...tempConfig, apiKey: e.target.value })}
-                className="bg-gray-700 border-gray-600 text-white"
-              />
-              <p className="text-xs text-gray-400">
-                Your API key is stored locally and never sent to our servers
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Server URL</Label>
-              <Input
+                id="baseUrl"
                 type="url"
-                placeholder="http://localhost:8000"
+                placeholder="http://localhost:8080"
                 value={tempConfig.baseUrl}
                 onChange={(e) => setTempConfig({ ...tempConfig, baseUrl: e.target.value })}
-                className="bg-gray-700 border-gray-600 text-white"
+                className="bg-white border-gray-300 focus:border-green-500 focus:ring-green-500"
               />
-              <p className="text-xs text-gray-400">
-                URL of your local inpainting API server
+              <p className="text-xs text-gray-500">
+                Default: http://localhost:8080 (change if you're running IOPaint on a different port or server)
               </p>
             </div>
-          )}
 
-          {/* Setup Instructions */}
-          <Card className="p-4 bg-blue-500/10 border-blue-500/20">
-            <h4 className="font-medium text-blue-400 mb-2">Quick Setup Guide</h4>
-            <div className="text-sm text-gray-300 space-y-1">
-              {tempConfig.provider === 'replicate' && (
-                <>
-                  <p>1. Sign up at replicate.com</p>
-                  <p>2. Go to Account → API Tokens</p>
-                  <p>3. Create a new token and paste it above</p>
-                  <p>4. You'll be charged per API call (~$0.01-0.05 per image)</p>
-                </>
-              )}
-              {tempConfig.provider === 'huggingface' && (
-                <>
-                  <p>1. Sign up at huggingface.co</p>
-                  <p>2. Go to Settings → Access Tokens</p>
-                  <p>3. Create a new token and paste it above</p>
-                  <p>4. Free tier has rate limits, may be slower</p>
-                </>
-              )}
-              {tempConfig.provider === 'local' && (
-                <>
-                  <p>1. Set up your own inpainting server</p>
-                  <p>2. Use models like Stable Diffusion Inpainting</p>
-                  <p>3. Ensure CORS is enabled for web requests</p>
-                  <p>4. API should accept POST /inpaint with image and mask</p>
-                </>
-              )}
-            </div>
-          </Card>
+            {/* Test Connection */}
+            <Card className="p-3 bg-gray-50 border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-800">Connection Status</h4>
+                  <p className="text-xs text-gray-600">Make sure IOPaint is running before using the magic eraser</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch(`${tempConfig.baseUrl}/api/v1/model`);
+                      if (response.ok) {
+                        alert('✅ IOPaint server is running!');
+                      } else {
+                        alert('❌ Cannot connect to IOPaint server');
+                      }
+                    } catch (error) {
+                      alert('❌ Cannot connect to IOPaint server. Make sure it\'s running.');
+                    }
+                  }}
+                  className="border-gray-300 text-gray-700 hover:bg-gray-100"
+                >
+                  Test Connection
+                </Button>
+              </div>
+            </Card>
+          </div>
 
           {/* Action Buttons */}
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
             <Button
               variant="outline"
               onClick={onClose}
-              className="border-gray-600 hover:border-gray-500"
+              className="border-gray-300 text-gray-700 hover:bg-gray-50"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSave}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-green-600 hover:bg-green-700 text-white"
             >
               Save Configuration
             </Button>

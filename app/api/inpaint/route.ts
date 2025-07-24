@@ -3,14 +3,15 @@ import { NextRequest, NextResponse } from 'next/server';
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic';
 
+type AIProvider = 'iopaint';
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const provider = formData.get('provider') as string;
-    const apiKey = formData.get('apiKey') as string;
+    const provider = formData.get('provider') as AIProvider;
     const image = formData.get('image') as File;
     const mask = formData.get('mask') as File;
-    const prompt = formData.get('prompt') as string || 'high quality, photorealistic, detailed';
+    const prompt = formData.get('prompt') as string || 'high quality, photorealistic, seamless background';
 
     if (!provider || !image || !mask) {
       return NextResponse.json(
@@ -19,109 +20,108 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert files to base64
+    // Validate provider - only IOPaint is supported
+    if (provider !== 'iopaint') {
+      return NextResponse.json(
+        { success: false, error: `Unsupported provider: ${provider}. Only IOPaint is supported.` },
+        { status: 400 }
+      );
+    }
+
+    // Convert files to base64 for IOPaint
     const imageBuffer = await image.arrayBuffer();
     const maskBuffer = await mask.arrayBuffer();
-    const imageBase64 = `data:${image.type};base64,${Buffer.from(imageBuffer).toString('base64')}`;
-    const maskBase64 = `data:${mask.type};base64,${Buffer.from(maskBuffer).toString('base64')}`;
 
-    let result;
+    // Get IOPaint server URL
+    const baseUrl = formData.get('baseUrl') as string || 'http://localhost:8080';
 
-    if (provider === 'replicate') {
-      if (!apiKey) {
-        return NextResponse.json(
-          { success: false, error: 'API key required for Replicate' },
-          { status: 400 }
-        );
-      }
+    try {
+      // IOPaint expects JSON with base64 encoded images (without data URL prefix)
+      const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+      const maskBase64 = Buffer.from(maskBuffer).toString('base64');
 
-      // Create prediction
-      const response = await fetch('https://api.replicate.com/v1/predictions', {
+      const requestBody = {
+        image: imageBase64,
+        mask: maskBase64,
+        ldm_steps: 20,
+        ldm_sampler: 'plms',
+        hd_strategy: 'Crop',
+        hd_strategy_crop_trigger_size: 800,
+        hd_strategy_crop_margin: 128,
+        hd_strategy_resize_limit: 1280
+      };
+
+      const response = await fetch(`${baseUrl}/api/v1/inpaint`, {
         method: 'POST',
         headers: {
-          'Authorization': `Token ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          version: "95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
-          input: {
-            image: imageBase64,
-            mask: maskBase64,
-            prompt: prompt,
-            num_inference_steps: 20,
-            guidance_scale: 7.5,
-            num_outputs: 1,
-            scheduler: "K_EULER"
-          }
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        const contentType = response.headers.get('content-type');
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+
+        if (contentType?.includes('application/json')) {
+          try {
+            const errorData = await response.json();
+            // Handle IOPaint specific error format
+            if (errorData.error && errorData.errors) {
+              errorMessage = `${errorData.error}: ${errorData.errors}`;
+
+              // Check for common IOPaint errors and provide helpful messages
+              if (errorData.errors.includes('Padding size should be less than')) {
+                errorMessage = 'Image is too small for IOPaint. Please use an image that is at least 64x64 pixels.';
+              } else if (errorData.errors.includes('cannot identify image file')) {
+                errorMessage = 'Invalid image format. Please use a valid PNG or JPEG image.';
+              }
+            } else {
+              errorMessage = errorData.error || errorData.message || errorMessage;
+            }
+          } catch {
+            errorMessage = await response.text();
+          }
+        } else {
+          errorMessage = await response.text();
+        }
+
         return NextResponse.json(
-          { success: false, error: `Replicate API error: ${response.statusText} - ${errorText}` },
+          { success: false, error: `IOPaint: ${errorMessage}` },
           { status: response.status }
         );
       }
 
-      const prediction = await response.json();
-      result = await pollReplicateResult(prediction.id, apiKey);
+      const contentType = response.headers.get('content-type');
+      let result;
 
-    } else if (provider === 'huggingface') {
-      if (!apiKey) {
-        return NextResponse.json(
-          { success: false, error: 'API key required for Hugging Face' },
-          { status: 400 }
-        );
-      }
+      // IOPaint API returns JSON or image depending on the endpoint
+      if (contentType?.includes('application/json')) {
+        // Parse JSON response
+        const jsonResponse = await response.json();
 
-      try {
-        const hfFormData = new FormData();
-        hfFormData.append('image', new Blob([imageBuffer]), 'image.png');
-        hfFormData.append('mask', new Blob([maskBuffer]), 'mask.png');
-
-        const response = await fetch('https://api-inference.huggingface.co/models/runwayml/stable-diffusion-inpainting', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: hfFormData
-        });
-
-        if (!response.ok) {
-          const contentType = response.headers.get('content-type');
-          let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-          
-          if (contentType?.includes('application/json')) {
-            try {
-              const errorData = await response.json();
-              errorMessage = errorData.error || errorData.message || errorMessage;
-            } catch {
-              errorMessage = await response.text();
-            }
-          } else {
-            errorMessage = await response.text();
-          }
-          
+        // Check if it contains base64 image data
+        if (jsonResponse && typeof jsonResponse === 'string') {
+          // Response is base64 image data
+          result = {
+            success: true,
+            imageUrl: `data:image/png;base64,${jsonResponse}`
+          };
+        } else if (jsonResponse.image) {
+          // Response contains image field
+          result = {
+            success: true,
+            imageUrl: `data:image/png;base64,${jsonResponse.image}`
+          };
+        } else {
+          // Unexpected JSON format
           return NextResponse.json(
-            { success: false, error: `Hugging Face API error: ${errorMessage}` },
-            { status: response.status }
+            { success: false, error: `IOPaint returned unexpected JSON format: ${JSON.stringify(jsonResponse).substring(0, 200)}...` },
+            { status: 500 }
           );
         }
-
-        const contentType = response.headers.get('content-type');
-        if (contentType?.includes('application/json')) {
-          // Handle JSON error response
-          const jsonResponse = await response.json();
-          if (jsonResponse.error) {
-            return NextResponse.json(
-              { success: false, error: `Hugging Face error: ${jsonResponse.error}` },
-              { status: 400 }
-            );
-          }
-        }
-
-        // Expect image blob response
+      } else if (contentType?.includes('image/')) {
+        // Direct image response
         const blob = await response.blob();
         const buffer = await blob.arrayBuffer();
         const base64 = Buffer.from(buffer).toString('base64');
@@ -129,72 +129,23 @@ export async function POST(request: NextRequest) {
           success: true,
           imageUrl: `data:image/png;base64,${base64}`
         };
-      } catch (error) {
+      } else {
+        // Unexpected content type
+        const responseText = await response.text();
         return NextResponse.json(
-          { success: false, error: `Hugging Face request failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
+          { success: false, error: `IOPaint returned unexpected content type: ${contentType}. Response: ${responseText.substring(0, 200)}...` },
           { status: 500 }
         );
       }
 
-    } else if (provider === 'local') {
-      const baseUrl = formData.get('baseUrl') as string || 'http://localhost:8000';
-      
-      try {
-        const localFormData = new FormData();
-        localFormData.append('image', new Blob([imageBuffer]), 'image.png');
-        localFormData.append('mask', new Blob([maskBuffer]), 'mask.png');
-        localFormData.append('prompt', prompt);
+      return NextResponse.json(result);
 
-        const response = await fetch(`${baseUrl}/inpaint`, {
-          method: 'POST',
-          body: localFormData
-        });
-
-        if (!response.ok) {
-          const contentType = response.headers.get('content-type');
-          let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-          
-          if (contentType?.includes('application/json')) {
-            try {
-              const errorData = await response.json();
-              errorMessage = errorData.error || errorData.message || errorMessage;
-            } catch {
-              errorMessage = await response.text();
-            }
-          } else {
-            errorMessage = await response.text();
-          }
-          
-          return NextResponse.json(
-            { success: false, error: `Local API error: ${errorMessage}` },
-            { status: response.status }
-          );
-        }
-
-        const contentType = response.headers.get('content-type');
-        if (!contentType?.includes('application/json')) {
-          const responseText = await response.text();
-          return NextResponse.json(
-            { success: false, error: `Expected JSON response but got: ${contentType}. Response: ${responseText.substring(0, 200)}...` },
-            { status: 500 }
-          );
-        }
-
-        result = await response.json();
-      } catch (error) {
-        return NextResponse.json(
-          { success: false, error: `Local API request failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
-          { status: 500 }
-        );
-      }
-    } else {
+    } catch (error) {
       return NextResponse.json(
-        { success: false, error: 'Unsupported provider' },
-        { status: 400 }
+        { success: false, error: `IOPaint API request failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
+        { status: 500 }
       );
     }
-
-    return NextResponse.json(result);
 
   } catch (error) {
     console.error('API route error:', error);
@@ -203,64 +154,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-async function pollReplicateResult(predictionId: string, apiKey: string): Promise<any> {
-  const maxAttempts = 60;
-  let attempts = 0;
-
-  while (attempts < maxAttempts) {
-    try {
-      const response = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
-        headers: { 'Authorization': `Token ${apiKey}` }
-      });
-
-      if (!response.ok) {
-        const contentType = response.headers.get('content-type');
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        
-        if (contentType?.includes('application/json')) {
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorData.message || errorMessage;
-          } catch {
-            errorMessage = await response.text();
-          }
-        } else {
-          errorMessage = await response.text();
-        }
-        
-        throw new Error(`Polling failed: ${errorMessage}`);
-      }
-
-      const contentType = response.headers.get('content-type');
-      if (!contentType?.includes('application/json')) {
-        const responseText = await response.text();
-        throw new Error(`Expected JSON response but got: ${contentType}. Response: ${responseText.substring(0, 200)}...`);
-      }
-
-      const result = await response.json();
-
-      if (result.status === 'succeeded') {
-        return {
-          success: true,
-          imageUrl: Array.isArray(result.output) ? result.output[0] : result.output
-        };
-      }
-
-      if (result.status === 'failed') {
-        throw new Error(result.error || 'Processing failed');
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      attempts++;
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Polling failed'
-      };
-    }
-  }
-
-  return { success: false, error: 'Processing timeout' };
 }
