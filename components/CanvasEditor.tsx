@@ -56,7 +56,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const [brushSettings, setBrushSettings] = useState<BrushSettings>({
     size: 20,
     opacity: 100,
-    color: "#ff3333", // 默认红色
+    color: "#ffffff", // 默认红色
     shape: "magic-wand" // 默认魔法棒
   });
   const [zoom, setZoom] = useState(1);

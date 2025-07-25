@@ -2,13 +2,28 @@
 
 import React, { useState, useCallback } from 'react';
 import { ImageUpload } from './ImageUpload';
-import { CanvasEditor } from './CanvasEditor';
+import { InteractiveCanvasEditor } from './InteractiveCanvasEditor';
+import { OptimizedCanvas } from './OptimizedCanvas';
+import { OptimizedLayout, ToolBar, StatusBar } from './OptimizedLayout';
 import { ProcessingModal } from './ProcessingModal';
 import { APIConfigModal } from './APIConfigModal';
+import { BatchProcessor } from './BatchProcessor';
+import { BrushControls } from './BrushControls';
+import { ModeSelector, ModeIntroduction, type ProcessingMode } from './ModeSelector';
 import { Card } from '@/components/ui/card';
 import { type AIProvider } from '@/lib/ai-services';
 import { Button } from '@/components/ui/button';
-import { Settings } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import {
+  Settings,
+  Download,
+  RotateCcw,
+  Wand2,
+  Image as ImageIcon,
+  Layers,
+  Palette,
+  Zap
+} from 'lucide-react';
 
 export interface ImageData {
   file: File;
@@ -18,11 +33,20 @@ export interface ImageData {
 }
 
 export const ImageEditor: React.FC = () => {
+  const [processingMode, setProcessingMode] = useState<ProcessingMode>('single');
   const [imageData, setImageData] = useState<ImageData | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAPIConfig, setShowAPIConfig] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [brushSettings, setBrushSettings] = useState({
+    size: 20,
+    opacity: 100,
+    color: "#ffffff",
+    shape: "magic-wand" as const
+  });
   const [apiConfig, setApiConfig] = useState({
     provider: 'iopaint' as AIProvider,
     apiKey: '',
@@ -225,114 +249,221 @@ export const ImageEditor: React.FC = () => {
     setError(null);
   }, []);
 
+  // 如果没有选择图片，显示模式选择和上传界面
+  if (!imageData && processingMode === 'single') {
+    return (
+      <div className="h-full flex flex-col">
+        {/* 模式选择 */}
+        <div className="p-6">
+          <ModeSelector
+            currentMode={processingMode}
+            onModeChange={setProcessingMode}
+          />
+          <ModeIntroduction mode={processingMode} />
+        </div>
+
+        {/* 上传区域 */}
+        <div className="flex-1 flex items-center justify-center p-6">
+          <ImageUpload onImageUpload={handleImageUpload} />
+        </div>
+      </div>
+    );
+  }
+
+  // 批量处理模式
+  if (processingMode === 'batch') {
+    return (
+      <div className="h-full">
+        <BatchProcessor
+          onBack={() => setProcessingMode('single')}
+          apiConfig={apiConfig}
+        />
+      </div>
+    );
+  }
+
+  // 单张处理模式 - 使用优化布局
   return (
-    <div className="w-full">
-      {!imageData ? (
-        <ImageUpload onImageUpload={handleImageUpload} />
-      ) : (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-800">Edit Your Image</h2>
+    <OptimizedLayout
+      onFullscreen={setIsFullscreen}
+      topBar={
+        <ToolBar
+          title="Magic Eraser"
+          subtitle={imageData ? `${imageData.file.name} (${imageData.width}×${imageData.height})` : undefined}
+          isFullscreen={isFullscreen}
+          actions={
             <div className="flex items-center gap-2">
+              {/* API配置状态 */}
+              {!isAPIConfigured && (
+                <Badge variant="outline" className="text-amber-600 border-amber-300">
+                  <Settings className="w-3 h-3 mr-1" />
+                  API Not Configured
+                </Badge>
+              )}
+
+              {/* 处理状态 */}
+              {isProcessing && (
+                <Badge variant="outline" className="text-blue-600 border-blue-300">
+                  <Zap className="w-3 h-3 mr-1" />
+                  Processing...
+                </Badge>
+              )}
+
+              {/* 操作按钮 */}
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setShowAPIConfig(true)}
-                className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                className="h-8"
               >
                 <Settings className="w-4 h-4 mr-2" />
                 API Settings
               </Button>
+
               <Button
-                variant="outline"
+                variant="ghost"
+                size="sm"
                 onClick={handleReset}
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="h-8"
               >
-                Upload New Image
+                <RotateCcw className="w-4 h-4 mr-2" />
+                New Image
               </Button>
+
+              {processedImageUrl && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  asChild
+                  className="h-8"
+                >
+                  <a href={processedImageUrl} download="processed-image.png">
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                  </a>
+                </Button>
+              )}
+            </div>
+          }
+        />
+      }
+      leftPanel={
+        <div className="space-y-6">
+          {/* 画笔控制 */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <Palette className="w-5 h-5 text-slate-600" />
+              <h3 className="font-semibold text-slate-800">Brush Settings</h3>
+            </div>
+            <BrushControls
+              settings={brushSettings}
+              onSettingsChange={setBrushSettings}
+              disabled={isProcessing}
+            />
+          </div>
+
+          {/* 图层信息 */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <Layers className="w-5 h-5 text-slate-600" />
+              <h3 className="font-semibold text-slate-800">Layers</h3>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-slate-500" />
+                  <span className="text-sm font-medium">Original</span>
+                </div>
+                <Badge variant="secondary" className="text-xs">Base</Badge>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-red-500 rounded opacity-60"></div>
+                  <span className="text-sm font-medium">Mask</span>
+                </div>
+                <Badge variant="outline" className="text-xs text-red-600 border-red-300">Active</Badge>
+              </div>
             </div>
           </div>
 
-          {/* API Configuration Status */}
-          {!isAPIConfigured && (
-            <Card className="p-4 bg-amber-50 border-amber-200 shadow-sm">
-              <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-amber-600" />
-                <p className="text-amber-700">
-                  Please configure an AI provider to use the magic eraser feature.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAPIConfig(true)}
-                  className="ml-auto border-amber-300 text-amber-700 hover:bg-amber-100"
-                >
-                  Configure Now
-                </Button>
-              </div>
-            </Card>
-          )}
+          {/* 处理按钮 */}
+          <div className="pt-4 border-t border-slate-200">
+            <Button
+              onClick={handleProcessImage}
+              disabled={isProcessing || !isAPIConfigured}
+              className="w-full h-12 text-base font-semibold"
+              size="lg"
+            >
+              <Wand2 className="w-5 h-5 mr-2" />
+              {isProcessing ? 'Processing...' : 'Remove Objects'}
+            </Button>
 
-          {error && (
-            <Card className="p-4 bg-red-50 border-red-200 shadow-sm">
-              <p className="text-red-700">{error}</p>
-            </Card>
-          )}
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium text-gray-800">Original Image</h3>
-              <CanvasEditor
-                imageData={imageData}
-                onProcessImage={handleProcessImage}
-                disabled={isProcessing}
-              />
-            </div>
-
-            {(processedImageUrl || isProcessing) && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-800">Processed Image</h3>
-                <Card className="p-4 bg-white border-gray-200 shadow-sm">
-                  <div className="aspect-[4/3] bg-gray-50 rounded-lg flex items-center justify-center">
-                    {isProcessing ? (
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                        <p className="text-gray-600">Processing image...</p>
-                      </div>
-                    ) : processedImageUrl ? (
-                      <img
-                        src={processedImageUrl}
-                        alt="Processed"
-                        className="max-w-full max-h-full object-contain rounded-lg"
-                      />
-                    ) : null}
-                  </div>
-
-                  {processedImageUrl && (
-                    <div className="mt-4 flex justify-center">
-                      <a
-                        href={processedImageUrl}
-                        download="processed-image.png"
-                        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
-                      >
-                        Download Image
-                      </a>
-                    </div>
-                  )}
-                </Card>
-              </div>
+            {!isAPIConfigured && (
+              <p className="text-xs text-amber-600 mt-2 text-center">
+                Configure API settings to enable processing
+              </p>
             )}
           </div>
         </div>
-      )}
+      }
+      bottomBar={
+        <StatusBar
+          zoom={zoom}
+          imageSize={imageData ? { width: imageData.width, height: imageData.height } : undefined}
+          isFullscreen={isFullscreen}
+          onZoomChange={setZoom}
+        />
+      }
+    >
+      {/* 主画布区域 */}
+      <div className="h-full flex">
+        {/* 原图编辑区域 */}
+        <div className="flex-1 flex flex-col">
+          <div className="flex-1">
+            {imageData && (
+              <InteractiveCanvasEditor
+                imageData={imageData}
+                onProcess={handleProcessImage}
+                disabled={isProcessing}
+                brushSettings={brushSettings}
+                processedImageUrl={processedImageUrl}
+                isProcessing={isProcessing}
+                isAPIConfigured={!!apiConfig.apiKey}
+                showResult={!!processedImageUrl}
+              />
+            )}
+          </div>
+        </div>
 
-      <ProcessingModal isOpen={isProcessing} />
-      <APIConfigModal
-        isOpen={showAPIConfig}
-        onClose={() => setShowAPIConfig(false)}
-        config={apiConfig}
-        onConfigChange={setApiConfig}
-      />
-    </div>
+        {/* 结果预览区域 */}
+        {(processedImageUrl || isProcessing) && (
+          <div className="w-1/2 border-l border-slate-200 bg-white flex flex-col">
+            <div className="p-4 border-b border-slate-200">
+              <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                <ImageIcon className="w-5 h-5" />
+                Processed Result
+              </h3>
+            </div>
+            <div className="flex-1 p-4 flex items-center justify-center bg-slate-50">
+              {isProcessing ? (
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                  <p className="text-slate-600 font-medium">Processing your image...</p>
+                  <p className="text-slate-500 text-sm mt-1">This may take a few moments</p>
+                </div>
+              ) : processedImageUrl ? (
+                <div className="max-w-full max-h-full flex items-center justify-center">
+                  <img
+                    src={processedImageUrl}
+                    alt="Processed result"
+                    className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
+    </OptimizedLayout>
   );
 };
