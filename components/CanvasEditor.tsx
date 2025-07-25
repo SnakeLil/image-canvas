@@ -1,12 +1,13 @@
-'use client';
+"use client";
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { BrushControls } from './BrushControls';
-import { ZoomControls } from './ZoomControls';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Undo, Redo, Trash2, Wand2 } from 'lucide-react';
-import type { ImageData } from './ImageEditor';
+import React, { useRef, useEffect, useState, useCallback } from "react";
+import { BrushControls } from "./BrushControls";
+import { ZoomControls } from "./ZoomControls";
+import { createMagicWandCursor } from "./MagicCursor";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Undo, Redo, Trash2, Wand2 } from "lucide-react";
+import type { ImageData } from "./ImageEditor";
 
 interface CanvasEditorProps {
   imageData: ImageData;
@@ -17,6 +18,8 @@ interface CanvasEditorProps {
 interface BrushSettings {
   size: number;
   opacity: number;
+  color: string;
+  shape: import('./MagicCursor').CursorShape;
 }
 
 interface CanvasState {
@@ -42,17 +45,19 @@ interface StarParticle {
 export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   imageData,
   onProcessImage,
-  disabled = false
+  disabled = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastPoint = useRef<{x: number, y: number} | null>(null);
-  
+  const lastPoint = useRef<{ x: number; y: number } | null>(null);
+
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushSettings, setBrushSettings] = useState<BrushSettings>({
     size: 20,
-    opacity: 100
+    opacity: 100,
+    color: "#ff3333", // 默认红色
+    shape: "magic-wand" // 默认魔法棒
   });
   const [zoom, setZoom] = useState(1);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -67,8 +72,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     const canvas = canvasRef.current;
     const maskCanvas = maskCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const maskCtx = maskCanvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
+    const maskCtx = maskCanvas.getContext("2d");
 
     if (!ctx || !maskCtx) return;
 
@@ -78,12 +83,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     const containerWidth = container.clientWidth - 32; // Account for padding
     const containerHeight = Math.min(600, window.innerHeight * 0.6);
-    
+
     const imageAspectRatio = imageData.width / imageData.height;
     const containerAspectRatio = containerWidth / containerHeight;
 
     let canvasWidth: number, canvasHeight: number;
-    
+
     if (imageAspectRatio > containerAspectRatio) {
       canvasWidth = containerWidth;
       canvasHeight = containerWidth / imageAspectRatio;
@@ -111,12 +116,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     maskCtx.clearRect(0, 0, canvasWidth, canvasHeight);
 
     // Remove blend mode to show white paint clearly
-    maskCanvas.style.mixBlendMode = 'normal';
+    maskCanvas.style.mixBlendMode = "normal";
 
     // Save initial state
     const initialState = {
       imageData: ctx.getImageData(0, 0, canvasWidth, canvasHeight),
-      maskData: maskCtx.getImageData(0, 0, canvasWidth, canvasHeight)
+      maskData: maskCtx.getImageData(0, 0, canvasWidth, canvasHeight),
     };
     setHistory([initialState]);
     setHistoryIndex(0);
@@ -137,26 +142,28 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         rotation: Math.random() * Math.PI * 2,
         velocity: {
           x: Math.cos(angle) * speed,
-          y: Math.sin(angle) * speed - 0.5 // slight upward drift
+          y: Math.sin(angle) * speed - 0.5, // slight upward drift
         },
         life: 0,
-        maxLife: 40 + Math.random() * 30
+        maxLife: 40 + Math.random() * 30,
       });
     }
-    setStars(prev => [...prev, ...newStars]);
+    setStars((prev) => [...prev, ...newStars]);
   }, []);
 
   // Animate stars
   const animateStars = useCallback(() => {
-    setStars(prev => {
-      const updated = prev.map(star => ({
-        ...star,
-        x: star.x + star.velocity.x,
-        y: star.y + star.velocity.y,
-        rotation: star.rotation + 0.1,
-        life: star.life + 1,
-        opacity: Math.max(0, 1 - (star.life / star.maxLife))
-      })).filter(star => star.life < star.maxLife);
+    setStars((prev) => {
+      const updated = prev
+        .map((star) => ({
+          ...star,
+          x: star.x + star.velocity.x,
+          y: star.y + star.velocity.y,
+          rotation: star.rotation + 0.1,
+          life: star.life + 1,
+          opacity: Math.max(0, 1 - star.life / star.maxLife),
+        }))
+        .filter((star) => star.life < star.maxLife);
 
       return updated;
     });
@@ -193,14 +200,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     const canvas = canvasRef.current;
     const maskCanvas = maskCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const maskCtx = maskCanvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
+    const maskCtx = maskCanvas.getContext("2d");
 
     if (!ctx || !maskCtx) return;
 
     const state = {
       imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
-      maskData: maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
+      maskData: maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height),
     };
 
     const newHistory = history.slice(0, historyIndex + 1);
@@ -214,13 +221,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     const newIndex = historyIndex - 1;
     const state = history[newIndex];
-    
+
     if (!canvasRef.current || !maskCanvasRef.current) return;
-    
+
     const canvas = canvasRef.current;
     const maskCanvas = maskCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const maskCtx = maskCanvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
+    const maskCtx = maskCanvas.getContext("2d");
 
     if (!ctx || !maskCtx || !state.imageData || !state.maskData) return;
 
@@ -234,13 +241,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     const newIndex = historyIndex + 1;
     const state = history[newIndex];
-    
+
     if (!canvasRef.current || !maskCanvasRef.current) return;
-    
+
     const canvas = canvasRef.current;
     const maskCanvas = maskCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const maskCtx = maskCanvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
+    const maskCtx = maskCanvas.getContext("2d");
 
     if (!ctx || !maskCtx || !state.imageData || !state.maskData) return;
 
@@ -253,7 +260,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (!maskCanvasRef.current) return;
 
     const maskCanvas = maskCanvasRef.current;
-    const maskCtx = maskCanvas.getContext('2d');
+    const maskCtx = maskCanvas.getContext("2d");
     if (!maskCtx) return;
 
     // Clear mask canvas completely
@@ -261,97 +268,136 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     saveState();
   }, [saveState]);
 
-  const getCanvasCoordinates = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!canvasRef.current) return null;
+  const getCanvasCoordinates = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      if (!canvasRef.current) return null;
 
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    
-    let clientX, clientY;
-    if ('touches' in e) {
-      if (e.touches.length === 0) return null;
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
 
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+      let clientX, clientY;
+      if ("touches" in e) {
+        if (e.touches.length === 0) return null;
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
 
-    return {
-      x: (clientX - rect.left) * scaleX,
-      y: (clientY - rect.top) * scaleY
-    };
-  }, []);
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
 
-  const startDrawing = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (disabled) return;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY,
+      };
+    },
+    []
+  );
 
-    e.preventDefault();
-    setIsDrawing(true);
-    lastPoint.current = null; // Reset last point for new stroke
+  const startDrawing = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      if (disabled) return;
 
-    const coords = getCanvasCoordinates(e);
-    if (!coords || !maskCanvasRef.current) return;
+      e.preventDefault();
+      setIsDrawing(true);
+      lastPoint.current = null; // Reset last point for new stroke
 
-    const maskCanvas = maskCanvasRef.current;
-    const maskCtx = maskCanvas.getContext('2d');
-    if (!maskCtx) return;
+      const coords = getCanvasCoordinates(e);
+      if (!coords || !maskCanvasRef.current) return;
 
-    // Use white color for IOPaint (white = remove, black = keep)
-    maskCtx.globalCompositeOperation = 'source-over';
-    maskCtx.fillStyle = `rgba(255, 255, 255, ${brushSettings.opacity / 100})`;
-    maskCtx.beginPath();
-    maskCtx.arc(coords.x, coords.y, brushSettings.size / 2, 0, 2 * Math.PI);
-    maskCtx.fill();
+      const maskCanvas = maskCanvasRef.current;
+      const maskCtx = maskCanvas.getContext("2d");
+      if (!maskCtx) return;
 
-    lastPoint.current = coords; // Set initial point
-
-    // Create stars at drawing position
-    createStars(coords.x, coords.y, 2);
-  }, [disabled, brushSettings, getCanvasCoordinates, createStars]);
-
-  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing || disabled) return;
-
-    e.preventDefault();
-    const coords = getCanvasCoordinates(e);
-    if (!coords || !maskCanvasRef.current) return;
-
-    const maskCanvas = maskCanvasRef.current;
-    const maskCtx = maskCanvas.getContext('2d');
-    if (!maskCtx) return;
-
-    // Improved drawing with line smoothing (similar to IOPaint)
-    maskCtx.globalCompositeOperation = 'source-over';
-    maskCtx.fillStyle = `rgba(255, 255, 255, ${brushSettings.opacity / 100})`;
-    maskCtx.strokeStyle = `rgba(255, 255, 255, ${brushSettings.opacity / 100})`;
-    maskCtx.lineWidth = brushSettings.size;
-    maskCtx.lineCap = 'round';
-    maskCtx.lineJoin = 'round';
-
-    // If this is the first point, just draw a circle
-    if (!lastPoint.current) {
+      // Use custom color for display, but will be converted to white for IOPaint processing
+      maskCtx.globalCompositeOperation = "source-over";
+      // Convert hex color to rgba
+      const hexToRgb = (hex: string) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result
+          ? {
+              r: parseInt(result[1], 16),
+              g: parseInt(result[2], 16),
+              b: parseInt(result[3], 16),
+            }
+          : { r: 255, g: 255, b: 255 };
+      };
+      const rgb = hexToRgb(brushSettings.color);
+      maskCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${
+        brushSettings.opacity / 100
+      })`;
       maskCtx.beginPath();
       maskCtx.arc(coords.x, coords.y, brushSettings.size / 2, 0, 2 * Math.PI);
       maskCtx.fill();
-      lastPoint.current = coords;
-    } else {
-      // Draw a line from the last point to the current point
-      maskCtx.beginPath();
-      maskCtx.moveTo(lastPoint.current.x, lastPoint.current.y);
-      maskCtx.lineTo(coords.x, coords.y);
-      maskCtx.stroke();
-      lastPoint.current = coords;
-    }
 
-    // Create stars while drawing (less frequently)
-    if (Math.random() < 0.15) {
-      createStars(coords.x, coords.y, 1);
-    }
-  }, [isDrawing, disabled, brushSettings, getCanvasCoordinates, createStars]);
+      lastPoint.current = coords; // Set initial point
+
+      // Create stars at drawing position
+      createStars(coords.x, coords.y, 2);
+    },
+    [disabled, brushSettings, getCanvasCoordinates, createStars]
+  );
+
+  const draw = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      if (!isDrawing || disabled) return;
+
+      e.preventDefault();
+      const coords = getCanvasCoordinates(e);
+      if (!coords || !maskCanvasRef.current) return;
+
+      const maskCanvas = maskCanvasRef.current;
+      const maskCtx = maskCanvas.getContext("2d");
+      if (!maskCtx) return;
+
+      // Improved drawing with line smoothing (similar to IOPaint)
+      maskCtx.globalCompositeOperation = "source-over";
+      // Convert hex color to rgba
+      const hexToRgb = (hex: string) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result
+          ? {
+              r: parseInt(result[1], 16),
+              g: parseInt(result[2], 16),
+              b: parseInt(result[3], 16),
+            }
+          : { r: 255, g: 255, b: 255 };
+      };
+      const rgb = hexToRgb(brushSettings.color);
+      maskCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${
+        brushSettings.opacity / 100
+      })`;
+      maskCtx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${
+        brushSettings.opacity / 100
+      })`;
+      maskCtx.lineWidth = brushSettings.size;
+      maskCtx.lineCap = "round";
+      maskCtx.lineJoin = "round";
+
+      // If this is the first point, just draw a circle
+      if (!lastPoint.current) {
+        maskCtx.beginPath();
+        maskCtx.arc(coords.x, coords.y, brushSettings.size / 2, 0, 2 * Math.PI);
+        maskCtx.fill();
+        lastPoint.current = coords;
+      } else {
+        // Draw a line from the last point to the current point
+        maskCtx.beginPath();
+        maskCtx.moveTo(lastPoint.current.x, lastPoint.current.y);
+        maskCtx.lineTo(coords.x, coords.y);
+        maskCtx.stroke();
+        lastPoint.current = coords;
+      }
+
+      // Create stars while drawing (less frequently)
+      if (Math.random() < 0.15) {
+        createStars(coords.x, coords.y, 1);
+      }
+    },
+    [isDrawing, disabled, brushSettings, getCanvasCoordinates, createStars]
+  );
 
   const stopDrawing = useCallback(() => {
     if (!isDrawing) return;
@@ -360,11 +406,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     saveState();
   }, [isDrawing, saveState]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (isDrawing) {
-      draw(e);
-    }
-  }, [isDrawing, draw]);
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (isDrawing) {
+        draw(e);
+      }
+    },
+    [isDrawing, draw]
+  );
 
   const handleMouseLeave = useCallback(() => {
     stopDrawing();
@@ -375,30 +424,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     onProcessImage(maskCanvasRef.current);
   }, [onProcessImage]);
 
-  // Create custom cursor SVG
-  const createStarCursor = useCallback((size: number) => {
-    const svg = `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-              fill="#FFD700"
-              stroke="#FFA500"
-              stroke-width="1"
-              filter="url(#glow)"/>
-        <circle cx="12" cy="12" r="1" fill="#FFF" opacity="0.8"/>
-      </svg>
-    `;
-    const encoded = encodeURIComponent(svg);
-    return `url("data:image/svg+xml,${encoded}") ${size/2} ${size/2}, auto`;
-  }, []);
+
 
   return (
     <Card className="p-4 bg-white border-gray-200 shadow-sm">
@@ -460,21 +486,30 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             <div
               ref={containerRef}
               className="relative bg-gray-50 rounded-lg p-4 overflow-hidden border border-gray-200"
-              style={{ minHeight: '400px' }}
+              style={{ minHeight: "400px" }}
             >
-              <div className="relative mx-auto" style={{ width: canvasSize.width, height: canvasSize.height }}>
+              <div
+                className="relative mx-auto"
+                style={{ width: canvasSize.width, height: canvasSize.height }}
+              >
                 <canvas
                   ref={canvasRef}
                   className="absolute inset-0 rounded-lg"
-                  style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}
+                  style={{
+                    transform: `scale(${zoom})`,
+                    transformOrigin: "top left",
+                  }}
                 />
                 <canvas
                   ref={maskCanvasRef}
                   className="absolute inset-0 rounded-lg opacity-60 pointer-events-auto"
                   style={{
                     transform: `scale(${zoom})`,
-                    transformOrigin: 'top left',
-                    cursor: createStarCursor(Math.max(20, brushSettings.size))
+                    transformOrigin: "top left",
+                    cursor: createMagicWandCursor(
+                      brushSettings.shape,
+                      Math.max(20, brushSettings.size)
+                    ),
                   }}
                   onMouseDown={startDrawing}
                   onMouseMove={handleMouseMove}
@@ -486,8 +521,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 />
 
                 {/* Star particles overlay */}
-                <div className="absolute inset-0 pointer-events-none" style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
-                  {stars.map(star => (
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    transform: `scale(${zoom})`,
+                    transformOrigin: "top left",
+                  }}
+                >
+                  {stars.map((star) => (
                     <div
                       key={star.id}
                       className="absolute"
@@ -498,7 +539,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                         height: star.size,
                         opacity: star.opacity,
                         transform: `rotate(${star.rotation}rad)`,
-                        transition: 'opacity 0.1s ease-out'
+                        transition: "opacity 0.1s ease-out",
                       }}
                     >
                       <svg
@@ -508,16 +549,36 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                         className="drop-shadow-lg"
                       >
                         <defs>
-                          <radialGradient id={`starGradient-${star.id}`} cx="50%" cy="50%" r="50%">
-                            <stop offset="0%" stopColor="#FFF" stopOpacity="0.9" />
-                            <stop offset="30%" stopColor="#FFD700" stopOpacity="0.8" />
-                            <stop offset="100%" stopColor="#FF6B35" stopOpacity="0.6" />
+                          <radialGradient
+                            id={`starGradient-${star.id}`}
+                            cx="50%"
+                            cy="50%"
+                            r="50%"
+                          >
+                            <stop
+                              offset="0%"
+                              stopColor="#FFF"
+                              stopOpacity="0.9"
+                            />
+                            <stop
+                              offset="30%"
+                              stopColor="#FFD700"
+                              stopOpacity="0.8"
+                            />
+                            <stop
+                              offset="100%"
+                              stopColor="#FF6B35"
+                              stopOpacity="0.6"
+                            />
                           </radialGradient>
                           <filter id={`glow-${star.id}`}>
-                            <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+                            <feGaussianBlur
+                              stdDeviation="1.5"
+                              result="coloredBlur"
+                            />
                             <feMerge>
-                              <feMergeNode in="coloredBlur"/>
-                              <feMergeNode in="SourceGraphic"/>
+                              <feMergeNode in="coloredBlur" />
+                              <feMergeNode in="SourceGraphic" />
                             </feMerge>
                           </filter>
                         </defs>
@@ -528,7 +589,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                           strokeWidth="0.3"
                           filter={`url(#glow-${star.id})`}
                         />
-                        <circle cx="12" cy="12" r="0.8" fill="#FFF" opacity="0.9" />
+                        <circle
+                          cx="12"
+                          cy="12"
+                          r="0.8"
+                          fill="#FFF"
+                          opacity="0.9"
+                        />
                       </svg>
                     </div>
                   ))}
@@ -548,8 +615,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         </div>
 
         <div className="text-sm text-gray-600 text-center space-y-1">
-          <div>Paint over the areas you want to remove (shown in white), then click "Remove Objects" to process</div>
-          <div className="text-xs text-blue-600">✨ Watch for magical star effects while painting!</div>
+          <div>
+            Paint over the areas you want to remove with your chosen color, then
+            click &quot;Remove Objects&quot; to process
+          </div>
+          <div className="text-xs text-blue-600">
+            ✨ Watch for magical star effects while painting!
+          </div>
         </div>
       </div>
     </Card>

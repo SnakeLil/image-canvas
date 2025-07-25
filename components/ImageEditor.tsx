@@ -105,14 +105,45 @@ export const ImageEditor: React.FC = () => {
       maskCtx.fillStyle = 'black';
       maskCtx.fillRect(0, 0, maskCanvasForProvider.width, maskCanvasForProvider.height);
 
-      // Then draw the user's white painted areas (areas to remove)
+      // Convert user's colored mask to white mask for IOPaint
       const scaleX = imageData.width / maskCanvas.width;
       const scaleY = imageData.height / maskCanvas.height;
+
+      // Get the user's mask data
+      const userMaskCtx = maskCanvas.getContext('2d')!;
+      const userMaskData = userMaskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+
+      // Create a white mask from the user's colored mask
+      const whiteMaskCanvas = document.createElement('canvas');
+      whiteMaskCanvas.width = maskCanvas.width;
+      whiteMaskCanvas.height = maskCanvas.height;
+      const whiteMaskCtx = whiteMaskCanvas.getContext('2d')!;
+
+      // Convert any non-transparent pixels to white
+      const whiteMaskData = whiteMaskCtx.createImageData(maskCanvas.width, maskCanvas.height);
+      for (let i = 0; i < userMaskData.data.length; i += 4) {
+        const alpha = userMaskData.data[i + 3];
+        if (alpha > 0) {
+          // Convert to white with same alpha
+          whiteMaskData.data[i] = 255;     // R
+          whiteMaskData.data[i + 1] = 255; // G
+          whiteMaskData.data[i + 2] = 255; // B
+          whiteMaskData.data[i + 3] = alpha; // A
+        } else {
+          // Keep transparent
+          whiteMaskData.data[i] = 0;
+          whiteMaskData.data[i + 1] = 0;
+          whiteMaskData.data[i + 2] = 0;
+          whiteMaskData.data[i + 3] = 0;
+        }
+      }
+      whiteMaskCtx.putImageData(whiteMaskData, 0, 0);
+
+      // Now draw the white mask to the IOPaint canvas
       maskCtx.save();
       maskCtx.scale(scaleX, scaleY);
-      // Use 'source-over' to ensure white areas are drawn on top of black background
       maskCtx.globalCompositeOperation = 'source-over';
-      maskCtx.drawImage(maskCanvas, 0, 0);
+      maskCtx.drawImage(whiteMaskCanvas, 0, 0);
       maskCtx.restore();
 
       // Convert image and mask to base64 (IOPaint format)
