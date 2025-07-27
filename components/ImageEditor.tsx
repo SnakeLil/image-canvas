@@ -36,6 +36,9 @@ export interface ImageProject {
   historyStates: Record<string, { history: string[]; historyIndex: number }>; // imageId -> history data
   processingStates: Record<string, boolean>; // imageId -> isProcessing (inpaint)
   backgroundProcessingStates: Record<string, boolean>; // imageId -> isBackgroundProcessing
+  // Track operation timestamps to determine the latest result
+  processedTimestamps: Record<string, number>; // imageId -> timestamp when inpaint was completed
+  backgroundRemovedTimestamps: Record<string, number>; // imageId -> timestamp when background removal was completed
 }
 
 export const ImageEditor: React.FC = () => {
@@ -48,7 +51,9 @@ export const ImageEditor: React.FC = () => {
     maskStates: {},
     historyStates: {},
     processingStates: {},
-    backgroundProcessingStates: {}
+    backgroundProcessingStates: {},
+    processedTimestamps: {},
+    backgroundRemovedTimestamps: {}
   });
 
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +130,32 @@ export const ImageEditor: React.FC = () => {
       }
     }));
   }, []);
+
+  // Get the final result based on timestamps (latest operation wins)
+  const getCurrentFinalResult = useCallback((): { url: string | null; type: 'inpaint' | 'background' | 'final' | 'none' } => {
+    if (!project.currentImageId) return { url: null, type: 'none' };
+
+    const imageId = project.currentImageId;
+    const processedUrl = project.processedResults[imageId];
+    const backgroundRemovedUrl = project.backgroundRemovedResults[imageId];
+    const processedTimestamp = project.processedTimestamps[imageId] || 0;
+    const backgroundRemovedTimestamp = project.backgroundRemovedTimestamps[imageId] || 0;
+
+    // If both results exist, compare timestamps and mark as final
+    if (processedUrl && backgroundRemovedUrl) {
+      if (backgroundRemovedTimestamp > processedTimestamp) {
+        return { url: backgroundRemovedUrl, type: 'final' };
+      } else {
+        return { url: processedUrl, type: 'final' };
+      }
+    } else if (processedUrl) {
+      return { url: processedUrl, type: 'inpaint' };
+    } else if (backgroundRemovedUrl) {
+      return { url: backgroundRemovedUrl, type: 'background' };
+    }
+
+    return { url: null, type: 'none' };
+  }, [project.currentImageId, project.processedResults, project.backgroundRemovedResults, project.processedTimestamps, project.backgroundRemovedTimestamps]);
 
   // Show API config modal on first load if no API is configured
   const [hasShownInitialConfig, setHasShownInitialConfig] = useState(false);
@@ -406,12 +437,17 @@ export const ImageEditor: React.FC = () => {
       // IOPaint returns the image directly as blob
       const blob = await response.blob();
       const imageUrl = URL.createObjectURL(blob);
-      // Store the processed result for the current image
+      // Store the processed result for the current image with timestamp
+      const timestamp = Date.now();
       setProject(prev => ({
         ...prev,
         processedResults: {
           ...prev.processedResults,
           [currentImage.id]: imageUrl
+        },
+        processedTimestamps: {
+          ...prev.processedTimestamps,
+          [currentImage.id]: timestamp
         }
       }));
 
@@ -469,7 +505,8 @@ export const ImageEditor: React.FC = () => {
       // Create blob URL for the result
       const resultImageUrl = `data:image/png;base64,${resultBase64}`;
 
-      // Store the background removed result for the current image
+      // Store the background removed result for the current image with timestamp
+      const timestamp = Date.now();
       setProject(prev => ({
         ...prev,
         backgroundRemovedResults: {
@@ -479,6 +516,10 @@ export const ImageEditor: React.FC = () => {
         originalBackgroundRemovedResults: {
           ...prev.originalBackgroundRemovedResults,
           [currentImage.id]: resultImageUrl
+        },
+        backgroundRemovedTimestamps: {
+          ...prev.backgroundRemovedTimestamps,
+          [currentImage.id]: timestamp
         }
       }));
 
@@ -613,11 +654,15 @@ export const ImageEditor: React.FC = () => {
       const newBackgroundRemovedResults = { ...prev.backgroundRemovedResults };
       const newOriginalBackgroundRemovedResults = { ...prev.originalBackgroundRemovedResults };
       const newHistoryStates = { ...prev.historyStates };
+      const newProcessedTimestamps = { ...prev.processedTimestamps };
+      const newBackgroundRemovedTimestamps = { ...prev.backgroundRemovedTimestamps };
 
       // Remove all results for current image
       delete newProcessedResults[currentImage.id];
       delete newBackgroundRemovedResults[currentImage.id];
       delete newOriginalBackgroundRemovedResults[currentImage.id];
+      delete newProcessedTimestamps[currentImage.id];
+      delete newBackgroundRemovedTimestamps[currentImage.id];
 
       // Reset history to initial state (empty mask)
       newHistoryStates[currentImage.id] = { history: [], historyIndex: -1 };
@@ -627,7 +672,9 @@ export const ImageEditor: React.FC = () => {
         processedResults: newProcessedResults,
         backgroundRemovedResults: newBackgroundRemovedResults,
         originalBackgroundRemovedResults: newOriginalBackgroundRemovedResults,
-        historyStates: newHistoryStates
+        historyStates: newHistoryStates,
+        processedTimestamps: newProcessedTimestamps,
+        backgroundRemovedTimestamps: newBackgroundRemovedTimestamps
       };
     });
   }, [getCurrentImage]);
@@ -642,7 +689,9 @@ export const ImageEditor: React.FC = () => {
       maskStates: {},
       historyStates: {},
       processingStates: {},
-      backgroundProcessingStates: {}
+      backgroundProcessingStates: {},
+      processedTimestamps: {},
+      backgroundRemovedTimestamps: {}
     });
     setError(null);
   }, []);
@@ -657,6 +706,8 @@ export const ImageEditor: React.FC = () => {
       const newHistoryStates = { ...prev.historyStates };
       const newProcessingStates = { ...prev.processingStates };
       const newBackgroundProcessingStates = { ...prev.backgroundProcessingStates };
+      const newProcessedTimestamps = { ...prev.processedTimestamps };
+      const newBackgroundRemovedTimestamps = { ...prev.backgroundRemovedTimestamps };
 
       delete newProcessedResults[imageId];
       delete newBackgroundRemovedResults[imageId];
@@ -665,6 +716,8 @@ export const ImageEditor: React.FC = () => {
       delete newHistoryStates[imageId];
       delete newProcessingStates[imageId];
       delete newBackgroundProcessingStates[imageId];
+      delete newProcessedTimestamps[imageId];
+      delete newBackgroundRemovedTimestamps[imageId];
 
       // If removing current image, select another one
       let newCurrentImageId = prev.currentImageId;
@@ -681,7 +734,9 @@ export const ImageEditor: React.FC = () => {
         maskStates: newMaskStates,
         historyStates: newHistoryStates,
         processingStates: newProcessingStates,
-        backgroundProcessingStates: newBackgroundProcessingStates
+        backgroundProcessingStates: newBackgroundProcessingStates,
+        processedTimestamps: newProcessedTimestamps,
+        backgroundRemovedTimestamps: newBackgroundRemovedTimestamps
       };
     });
   }, []);
@@ -831,6 +886,7 @@ export const ImageEditor: React.FC = () => {
               onBrushSettingsChange={setBrushSettings}
               processedImageUrl={currentProcessedUrl}
               backgroundRemovedImageUrl={getCurrentBackgroundRemovedUrl()}
+              finalResult={getCurrentFinalResult()}
               isProcessing={getCurrentProcessingState()}
               isBackgroundProcessing={getCurrentBackgroundProcessingState()}
               disabled={getCurrentProcessingState() || getCurrentBackgroundProcessingState()}

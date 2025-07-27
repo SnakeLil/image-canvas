@@ -22,6 +22,7 @@ interface ToolPanelProps {
   }) => void;
   processedImageUrl?: string | null;
   backgroundRemovedImageUrl?: string | null;
+  finalResult?: { url: string | null; type: 'inpaint' | 'background' | 'final' | 'none' };
   isProcessing?: boolean;
   isBackgroundProcessing?: boolean;
   disabled?: boolean;
@@ -33,34 +34,19 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
   onBrushSettingsChange,
   processedImageUrl,
   backgroundRemovedImageUrl,
+  finalResult,
   isProcessing = false,
   isBackgroundProcessing = false,
   disabled = false,
   onShowHelp
 }) => {
-  // Determine which result to show (same logic as CanvasEditor comparison)
+  // Use the finalResult from props (based on timestamps)
   const getFinalResultUrl = () => {
-    // When both results exist, background removed is the final result
-    // (since background removal uses the processed image as input when available)
-    if (processedImageUrl && backgroundRemovedImageUrl) {
-      return backgroundRemovedImageUrl;
-    } else if (processedImageUrl) {
-      return processedImageUrl;
-    } else if (backgroundRemovedImageUrl) {
-      return backgroundRemovedImageUrl;
-    }
-    return null;
+    return finalResult?.url || null;
   };
 
   const getFinalResultType = () => {
-    if (processedImageUrl && backgroundRemovedImageUrl) {
-      return 'final'; // Background removed after inpaint
-    } else if (processedImageUrl) {
-      return 'inpaint';
-    } else if (backgroundRemovedImageUrl) {
-      return 'background';
-    }
-    return 'none';
+    return finalResult?.type || 'none';
   };
   const [showPreview, setShowPreview] = useState(false);
 
