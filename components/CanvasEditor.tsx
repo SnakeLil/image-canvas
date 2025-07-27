@@ -1,70 +1,246 @@
 "use client";
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { BrushControls } from "./BrushControls";
 import { ZoomControls } from "./ZoomControls";
 import { createMagicWandCursor } from "./MagicCursor";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Undo, Redo, Trash2, Wand2 } from "lucide-react";
+import {
+  Undo,
+  Redo,
+  Trash2,
+  Wand2,
+  Sparkles,
+  UnfoldHorizontal,
+  Scissors,
+  Palette,
+  ChevronDown,
+} from "lucide-react";
 import type { ImageData } from "./ImageEditor";
+
+export interface MaskState {
+  dataURL: string;
+  width: number;
+  height: number;
+}
 
 interface CanvasEditorProps {
   imageData: ImageData;
   onProcessImage: (maskCanvas: HTMLCanvasElement) => void;
   disabled?: boolean;
+  brushSettings?: BrushSettings;
+  onBrushSettingsChange?: (settings: BrushSettings) => void;
+  // Mask state management
+  initialMaskState?: MaskState; // Mask state with size info
+  onMaskStateChange?: (maskState: MaskState) => void;
+  // History state management
+  initialHistoryState?: { history: string[]; historyIndex: number };
+  onHistoryStateChange?: (history: string[], historyIndex: number) => void;
+  // Processing state
+  isProcessing?: boolean;
+  // Help callback
+  onShowHelp?: () => void;
+  // Comparison feature
+  processedImageUrl?: string | null;
+  // Background removal feature
+  onRemoveBackground?: () => void;
+  isBackgroundProcessing?: boolean;
+  backgroundRemovedImageUrl?: string | null;
+  // Background replacement feature
+  onReplaceBackground?: (backgroundUrl: string) => void;
+  // Clear all operations
+  onClearAll?: () => void;
 }
 
 interface BrushSettings {
   size: number;
   opacity: number;
   color: string;
-  shape: import('./MagicCursor').CursorShape;
-}
-
-interface CanvasState {
-  imageData: globalThis.ImageData | null;
-  maskData: globalThis.ImageData | null;
-}
-
-interface StarParticle {
-  id: number;
-  x: number;
-  y: number;
-  size: number;
-  opacity: number;
-  rotation: number;
-  velocity: {
-    x: number;
-    y: number;
-  };
-  life: number;
-  maxLife: number;
+  shape: import("./MagicCursor").CursorShape;
 }
 
 export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   imageData,
   onProcessImage,
   disabled = false,
+  brushSettings: externalBrushSettings,
+  onBrushSettingsChange,
+  initialMaskState,
+  onMaskStateChange,
+  initialHistoryState,
+  onHistoryStateChange,
+  isProcessing = false,
+  onShowHelp,
+  processedImageUrl,
+  onRemoveBackground,
+  isBackgroundProcessing = false,
+  backgroundRemovedImageUrl,
+  onReplaceBackground,
+  onClearAll,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastPoint = useRef<{ x: number; y: number } | null>(null);
 
   const [isDrawing, setIsDrawing] = useState(false);
-  const [brushSettings, setBrushSettings] = useState<BrushSettings>({
-    size: 20,
-    opacity: 100,
-    color: "#ff3333", // 默认红色
-    shape: "magic-wand" // 默认魔法棒
-  });
+  const [internalBrushSettings, setInternalBrushSettings] =
+    useState<BrushSettings>({
+      size: 20,
+      opacity: 100,
+      color: "#ff3333",
+      shape: "magic-wand",
+    });
+  const [showComparison, setShowComparison] = useState(false);
+  const [comparisonProgress, setComparisonProgress] = useState(0);
+  const [comparisonStartTime, setComparisonStartTime] = useState<number | null>(
+    null
+  );
+  const [comparisonMode, setComparisonMode] = useState<'inpaint' | 'background' | 'final'>('inpaint');
+  const [showBackgroundSelector, setShowBackgroundSelector] = useState(false);
+  const backgroundSelectorRef = useRef<HTMLDivElement>(null);
+
+  // Use external brush settings if provided, otherwise use internal
+  const brushSettings = externalBrushSettings || internalBrushSettings;
+
+  // Helper function to create mask state
+  const createMaskState = useCallback(
+    (canvas: HTMLCanvasElement): MaskState => {
+      return {
+        dataURL: canvas.toDataURL(),
+        width: canvas.width,
+        height: canvas.height,
+      };
+    },
+    []
+  );
+
+  // Helper function to draw a line between two points
+  const drawLine = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      from: { x: number; y: number },
+      to: { x: number; y: number }
+    ) => {
+      const distance = Math.sqrt(
+        Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2)
+      );
+      const steps = Math.max(
+        1,
+        Math.floor(distance / (brushSettings.size / 4))
+      ); // More steps for smoother lines
+
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const x = from.x + (to.x - from.x) * t;
+        const y = from.y + (to.y - from.y) * t;
+
+        ctx.beginPath();
+        ctx.arc(x, y, brushSettings.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    [brushSettings.size]
+  );
+
   const [zoom, setZoom] = useState(1);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [history, setHistory] = useState<CanvasState[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [stars, setStars] = useState<StarParticle[]>([]);
-  const animationFrameRef = useRef<number>();
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
+  const [lastDrawPoint, setLastDrawPoint] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [previousDrawPoint, setPreviousDrawPoint] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [history, setHistory] = useState<string[]>(
+    initialHistoryState?.history || []
+  );
+  const [historyIndex, setHistoryIndex] = useState(
+    initialHistoryState?.historyIndex || -1
+  );
+
+  // Sync history state when props change (image switching)
+  useEffect(() => {
+    if (initialHistoryState) {
+      setHistory(initialHistoryState.history);
+      setHistoryIndex(initialHistoryState.historyIndex);
+    } else {
+      // Reset to empty state for new images
+      setHistory([]);
+      setHistoryIndex(-1);
+    }
+  }, [initialHistoryState]);
+
+  // Restore mask state when switching images
+  useEffect(() => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas || !canvasSize.width || !canvasSize.height) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Clear current mask
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Restore mask state if available
+    if (initialMaskState) {
+      const img = new Image();
+      img.onload = () => {
+        // Scale the mask to fit current canvas size
+        const scaleX = canvasSize.width / initialMaskState.width;
+        const scaleY = canvasSize.height / initialMaskState.height;
+
+        // If the aspect ratios match, scale uniformly
+        if (Math.abs(scaleX - scaleY) < 0.01) {
+          ctx.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
+        } else {
+          // If aspect ratios don't match, this might be from a different image
+          // Only restore if dimensions match exactly to avoid confusion
+          if (
+            initialMaskState.width === canvasSize.width &&
+            initialMaskState.height === canvasSize.height
+          ) {
+            ctx.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
+          }
+        }
+      };
+      img.src = initialMaskState.dataURL;
+    }
+  }, [initialMaskState, canvasSize]);
+
+  // Save initial blank state for new images (when no history exists)
+  useEffect(() => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas || !canvasSize.width || !canvasSize.height) return;
+
+    // Only save initial state if no history exists (new image)
+    if (history.length === 0 && historyIndex === -1) {
+      const dataURL = canvas.toDataURL();
+      setHistory([dataURL]);
+      setHistoryIndex(0);
+
+      // Notify parent about initial state
+      if (onHistoryStateChange) {
+        onHistoryStateChange([dataURL], 0);
+      }
+      if (onMaskStateChange) {
+        onMaskStateChange(createMaskState(canvas));
+      }
+    }
+  }, [
+    canvasSize,
+    history.length,
+    historyIndex,
+    onHistoryStateChange,
+    onMaskStateChange,
+    createMaskState,
+  ]);
+
+  // Maximum canvas dimensions
+  const MAX_CANVAS_WIDTH = 800;
+  const MAX_CANVAS_HEIGHT = 600;
 
   // Initialize canvas
   useEffect(() => {
@@ -77,553 +253,720 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     if (!ctx || !maskCtx) return;
 
-    // Calculate canvas size to fit container while maintaining aspect ratio
-    const container = containerRef.current;
-    if (!container) return;
+    // Calculate canvas size with maximum constraints
+    const aspectRatio = imageData.width / imageData.height;
+    let newWidth = Math.min(imageData.width, MAX_CANVAS_WIDTH);
+    let newHeight = newWidth / aspectRatio;
 
-    const containerWidth = container.clientWidth - 32; // Account for padding
-    const containerHeight = Math.min(600, window.innerHeight * 0.6);
-
-    const imageAspectRatio = imageData.width / imageData.height;
-    const containerAspectRatio = containerWidth / containerHeight;
-
-    let canvasWidth: number, canvasHeight: number;
-
-    if (imageAspectRatio > containerAspectRatio) {
-      canvasWidth = containerWidth;
-      canvasHeight = containerWidth / imageAspectRatio;
-    } else {
-      canvasHeight = containerHeight;
-      canvasWidth = containerHeight * imageAspectRatio;
+    if (newHeight > MAX_CANVAS_HEIGHT) {
+      newHeight = MAX_CANVAS_HEIGHT;
+      newWidth = newHeight * aspectRatio;
     }
 
-    setCanvasSize({ width: canvasWidth, height: canvasHeight });
+    setCanvasSize({ width: newWidth, height: newHeight });
 
     // Set canvas dimensions
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    maskCanvas.width = canvasWidth;
-    maskCanvas.height = canvasHeight;
+    canvas.width = newWidth;
+    canvas.height = newHeight;
+    maskCanvas.width = newWidth;
+    maskCanvas.height = newHeight;
 
-    // Draw image on main canvas
+    // Draw image (use background removed version if available, otherwise original)
     const img = new Image();
     img.onload = () => {
-      ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+      ctx.drawImage(img, 0, 0, newWidth, newHeight);
     };
-    img.src = imageData.url;
+    img.src = backgroundRemovedImageUrl || imageData.url;
 
-    // Initialize mask canvas with transparent background for display
-    maskCtx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-    // Remove blend mode to show white paint clearly
-    maskCanvas.style.mixBlendMode = "normal";
-
-    // Save initial state
-    const initialState = {
-      imageData: ctx.getImageData(0, 0, canvasWidth, canvasHeight),
-      maskData: maskCtx.getImageData(0, 0, canvasWidth, canvasHeight),
-    };
-    setHistory([initialState]);
-    setHistoryIndex(0);
-  }, [imageData]);
-
-  // Create star particles
-  const createStars = useCallback((x: number, y: number, count: number = 3) => {
-    const newStars: StarParticle[] = [];
-    for (let i = 0; i < count; i++) {
-      const angle = (Math.PI * 2 * i) / count + Math.random() * 1.0;
-      const speed = 0.5 + Math.random() * 1.5;
-      newStars.push({
-        id: Date.now() + i + Math.random() * 1000,
-        x: x + (Math.random() - 0.5) * 30,
-        y: y + (Math.random() - 0.5) * 30,
-        size: 6 + Math.random() * 10,
-        opacity: 0.8 + Math.random() * 0.2,
-        rotation: Math.random() * Math.PI * 2,
-        velocity: {
-          x: Math.cos(angle) * speed,
-          y: Math.sin(angle) * speed - 0.5, // slight upward drift
-        },
-        life: 0,
-        maxLife: 40 + Math.random() * 30,
-      });
-    }
-    setStars((prev) => [...prev, ...newStars]);
-  }, []);
-
-  // Animate stars
-  const animateStars = useCallback(() => {
-    setStars((prev) => {
-      const updated = prev
-        .map((star) => ({
-          ...star,
-          x: star.x + star.velocity.x,
-          y: star.y + star.velocity.y,
-          rotation: star.rotation + 0.1,
-          life: star.life + 1,
-          opacity: Math.max(0, 1 - star.life / star.maxLife),
-        }))
-        .filter((star) => star.life < star.maxLife);
-
-      return updated;
-    });
-
-    if (stars.length > 0) {
-      animationFrameRef.current = requestAnimationFrame(animateStars);
-    }
-  }, [stars.length]);
-
-  // Start animation when stars are created
-  useEffect(() => {
-    if (stars.length > 0 && !animationFrameRef.current) {
-      animationFrameRef.current = requestAnimationFrame(animateStars);
-    }
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = undefined;
-      }
-    };
-  }, [stars.length, animateStars]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, []);
-
-  const saveState = useCallback(() => {
-    if (!canvasRef.current || !maskCanvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const maskCanvas = maskCanvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const maskCtx = maskCanvas.getContext("2d");
-
-    if (!ctx || !maskCtx) return;
-
-    const state = {
-      imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
-      maskData: maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height),
-    };
-
-    const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push(state);
-    setHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
-  }, [history, historyIndex]);
-
-  const undo = useCallback(() => {
-    if (historyIndex <= 0) return;
-
-    const newIndex = historyIndex - 1;
-    const state = history[newIndex];
-
-    if (!canvasRef.current || !maskCanvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const maskCanvas = maskCanvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const maskCtx = maskCanvas.getContext("2d");
-
-    if (!ctx || !maskCtx || !state.imageData || !state.maskData) return;
-
-    ctx.putImageData(state.imageData, 0, 0);
-    maskCtx.putImageData(state.maskData, 0, 0);
-    setHistoryIndex(newIndex);
-  }, [history, historyIndex]);
-
-  const redo = useCallback(() => {
-    if (historyIndex >= history.length - 1) return;
-
-    const newIndex = historyIndex + 1;
-    const state = history[newIndex];
-
-    if (!canvasRef.current || !maskCanvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const maskCanvas = maskCanvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const maskCtx = maskCanvas.getContext("2d");
-
-    if (!ctx || !maskCtx || !state.imageData || !state.maskData) return;
-
-    ctx.putImageData(state.imageData, 0, 0);
-    maskCtx.putImageData(state.maskData, 0, 0);
-    setHistoryIndex(newIndex);
-  }, [history, historyIndex]);
-
-  const clearMask = useCallback(() => {
-    if (!maskCanvasRef.current) return;
-
-    const maskCanvas = maskCanvasRef.current;
-    const maskCtx = maskCanvas.getContext("2d");
-    if (!maskCtx) return;
-
-    // Clear mask canvas completely
-    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-    saveState();
-  }, [saveState]);
-
-  const getCanvasCoordinates = useCallback(
-    (e: React.MouseEvent | React.TouchEvent) => {
-      if (!canvasRef.current) return null;
-
-      const canvas = canvasRef.current;
-      const rect = canvas.getBoundingClientRect();
-
-      let clientX, clientY;
-      if ("touches" in e) {
-        if (e.touches.length === 0) return null;
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-      } else {
-        clientX = e.clientX;
-        clientY = e.clientY;
-      }
-
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-
-      return {
-        x: (clientX - rect.left) * scaleX,
-        y: (clientY - rect.top) * scaleY,
-      };
-    },
-    []
-  );
+    // Clear mask (restoration is handled by separate useEffect)
+    maskCtx.clearRect(0, 0, newWidth, newHeight);
+  }, [imageData, backgroundRemovedImageUrl]);
 
   const startDrawing = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
-      if (disabled) return;
-
-      e.preventDefault();
+      if (disabled || isPanning || isProcessing) return;
       setIsDrawing(true);
-      lastPoint.current = null; // Reset last point for new stroke
 
-      const coords = getCanvasCoordinates(e);
-      if (!coords || !maskCanvasRef.current) return;
+      const canvas = maskCanvasRef.current;
+      if (!canvas) return;
 
-      const maskCanvas = maskCanvasRef.current;
-      const maskCtx = maskCanvas.getContext("2d");
-      if (!maskCtx) return;
+      const rect = canvas.getBoundingClientRect();
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
 
-      // Use custom color for display, but will be converted to white for IOPaint processing
-      maskCtx.globalCompositeOperation = "source-over";
-      // Convert hex color to rgba
-      const hexToRgb = (hex: string) => {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result
-          ? {
-              r: parseInt(result[1], 16),
-              g: parseInt(result[2], 16),
-              b: parseInt(result[3], 16),
-            }
-          : { r: 255, g: 255, b: 255 };
-      };
-      const rgb = hexToRgb(brushSettings.color);
-      maskCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${
-        brushSettings.opacity / 100
-      })`;
-      maskCtx.beginPath();
-      maskCtx.arc(coords.x, coords.y, brushSettings.size / 2, 0, 2 * Math.PI);
-      maskCtx.fill();
+      // Account for zoom and pan transformations
+      const x =
+        (clientX - rect.left - rect.width / 2) / zoom + canvasSize.width / 2;
+      const y =
+        (clientY - rect.top - rect.height / 2) / zoom + canvasSize.height / 2;
 
-      lastPoint.current = coords; // Set initial point
-
-      // Create stars at drawing position
-      createStars(coords.x, coords.y, 2);
+      // Store the starting point but don't draw yet
+      setLastDrawPoint({ x, y });
+      setPreviousDrawPoint({ x, y });
     },
-    [disabled, brushSettings, getCanvasCoordinates, createStars]
+    [disabled, isPanning, isProcessing, zoom, canvasSize]
   );
 
   const draw = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
-      if (!isDrawing || disabled) return;
+      if (!isDrawing || disabled || isPanning || isProcessing) return;
 
-      e.preventDefault();
-      const coords = getCanvasCoordinates(e);
-      if (!coords || !maskCanvasRef.current) return;
+      const canvas = maskCanvasRef.current;
+      if (!canvas) return;
 
-      const maskCanvas = maskCanvasRef.current;
-      const maskCtx = maskCanvas.getContext("2d");
-      if (!maskCtx) return;
+      const rect = canvas.getBoundingClientRect();
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
 
-      // Improved drawing with line smoothing (similar to IOPaint)
-      maskCtx.globalCompositeOperation = "source-over";
-      // Convert hex color to rgba
-      const hexToRgb = (hex: string) => {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result
-          ? {
-              r: parseInt(result[1], 16),
-              g: parseInt(result[2], 16),
-              b: parseInt(result[3], 16),
-            }
-          : { r: 255, g: 255, b: 255 };
-      };
-      const rgb = hexToRgb(brushSettings.color);
-      maskCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${
-        brushSettings.opacity / 100
-      })`;
-      maskCtx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${
-        brushSettings.opacity / 100
-      })`;
-      maskCtx.lineWidth = brushSettings.size;
-      maskCtx.lineCap = "round";
-      maskCtx.lineJoin = "round";
+      // Account for zoom and pan transformations
+      const x =
+        (clientX - rect.left - rect.width / 2) / zoom + canvasSize.width / 2;
+      const y =
+        (clientY - rect.top - rect.height / 2) / zoom + canvasSize.height / 2;
 
-      // If this is the first point, just draw a circle
-      if (!lastPoint.current) {
-        maskCtx.beginPath();
-        maskCtx.arc(coords.x, coords.y, brushSettings.size / 2, 0, 2 * Math.PI);
-        maskCtx.fill();
-        lastPoint.current = coords;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = brushSettings.color;
+      ctx.globalAlpha = brushSettings.opacity / 100;
+
+      // If this is the first draw after starting, draw the starting point too
+      if (lastDrawPoint) {
+        ctx.beginPath();
+        ctx.arc(
+          lastDrawPoint.x,
+          lastDrawPoint.y,
+          brushSettings.size / 2,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+        setLastDrawPoint(null); // Clear the starting point
+      }
+
+      // Draw line from previous point to current point for smooth drawing
+      if (previousDrawPoint) {
+        drawLine(ctx, previousDrawPoint, { x, y });
       } else {
-        // Draw a line from the last point to the current point
-        maskCtx.beginPath();
-        maskCtx.moveTo(lastPoint.current.x, lastPoint.current.y);
-        maskCtx.lineTo(coords.x, coords.y);
-        maskCtx.stroke();
-        lastPoint.current = coords;
+        // Draw current point if no previous point
+        ctx.beginPath();
+        ctx.arc(x, y, brushSettings.size / 2, 0, Math.PI * 2);
+        ctx.fill();
       }
 
-      // Create stars while drawing (less frequently)
-      if (Math.random() < 0.15) {
-        createStars(coords.x, coords.y, 1);
-      }
+      // Update previous point
+      setPreviousDrawPoint({ x, y });
     },
-    [isDrawing, disabled, brushSettings, getCanvasCoordinates, createStars]
+    [
+      isDrawing,
+      disabled,
+      isPanning,
+      isProcessing,
+      zoom,
+      brushSettings,
+      canvasSize,
+      lastDrawPoint,
+      previousDrawPoint,
+      drawLine,
+    ]
   );
+
+  // Save current state to history
+  const saveToHistory = useCallback(() => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+
+    const dataURL = canvas.toDataURL();
+    const newIndex = Math.min(historyIndex + 1, 19);
+
+    setHistory((prev) => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(dataURL);
+      const finalHistory = newHistory.slice(-20); // Keep only last 20 states
+
+      // Notify parent component about history change
+      if (onHistoryStateChange) {
+        onHistoryStateChange(finalHistory, newIndex);
+      }
+
+      return finalHistory;
+    });
+
+    setHistoryIndex(newIndex);
+
+    // Also notify about mask state change
+    if (onMaskStateChange) {
+      onMaskStateChange(createMaskState(canvas));
+    }
+  }, [historyIndex, onHistoryStateChange, onMaskStateChange, createMaskState]);
 
   const stopDrawing = useCallback(() => {
-    if (!isDrawing) return;
-    setIsDrawing(false);
-    lastPoint.current = null; // Clear last point
-    saveState();
-  }, [isDrawing, saveState]);
+    if (isDrawing) {
+      setIsDrawing(false);
+      setPreviousDrawPoint(null); // Reset previous point
+      // Save to history after drawing
+      setTimeout(() => saveToHistory(), 0);
+    }
+  }, [isDrawing, saveToHistory]);
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (isDrawing) {
-        draw(e);
-      }
-    },
-    [isDrawing, draw]
-  );
+  const clearMask = useCallback(() => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
 
-  const handleMouseLeave = useCallback(() => {
-    stopDrawing();
-  }, [stopDrawing]);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Save to history after clearing
+    setTimeout(() => saveToHistory(), 0);
+  }, [saveToHistory]);
+
+  const handleClearAll = useCallback(() => {
+    // Clear the mask canvas
+    clearMask();
+
+    // Call the parent's clear all function to reset all processing results
+    if (onClearAll) {
+      onClearAll();
+    }
+  }, [clearMask, onClearAll]);
 
   const handleProcess = useCallback(() => {
     if (!maskCanvasRef.current) return;
     onProcessImage(maskCanvasRef.current);
   }, [onProcessImage]);
 
+  // Determine which comparison image to show
+  const getComparisonImageUrl = useCallback(() => {
+    // When both results exist, we need to determine which one is the final result
+    // The final result is the one that was processed last
+    if (processedImageUrl && backgroundRemovedImageUrl) {
+      // If we have both, show the background removed result as it's likely the final step
+      // (since background removal uses the processed image as input when available)
+      return backgroundRemovedImageUrl;
+    } else if (processedImageUrl) {
+      return processedImageUrl;
+    } else if (backgroundRemovedImageUrl) {
+      return backgroundRemovedImageUrl;
+    }
+    return null;
+  }, [processedImageUrl, backgroundRemovedImageUrl]);
 
+  // Determine comparison mode based on available results
+  const getCurrentComparisonMode = useCallback(() => {
+    if (processedImageUrl && backgroundRemovedImageUrl) {
+      return 'final'; // Show original vs final result (background removed after inpaint)
+    } else if (processedImageUrl) {
+      return 'inpaint'; // Show original vs inpaint result
+    } else if (backgroundRemovedImageUrl) {
+      return 'background'; // Show original vs background removed
+    }
+    return 'inpaint'; // Default
+  }, [processedImageUrl, backgroundRemovedImageUrl]);
+
+  // Comparison handlers
+  const handleCompareStart = () => {
+    const comparisonImageUrl = getComparisonImageUrl();
+    if (comparisonImageUrl) {
+      setComparisonMode(getCurrentComparisonMode());
+      setShowComparison(true);
+      setComparisonProgress(0);
+      setComparisonStartTime(Date.now());
+    }
+  };
+
+  const handleCompareEnd = () => {
+    setShowComparison(false);
+    setComparisonProgress(0);
+    setComparisonStartTime(null);
+  };
+
+  // Animation effect for comparison
+  useEffect(() => {
+    if (!showComparison || !comparisonStartTime) return;
+
+    const animateProgress = () => {
+      const elapsed = Date.now() - comparisonStartTime;
+      const progress = Math.min(elapsed / 400, 1); // 1 second for full sweep
+      setComparisonProgress(progress);
+
+      if (progress < 1 && showComparison) {
+        requestAnimationFrame(animateProgress);
+      }
+    };
+
+    const animationId = requestAnimationFrame(animateProgress);
+
+    return () => {
+      cancelAnimationFrame(animationId);
+    };
+  }, [showComparison, comparisonStartTime]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setShowComparison(false);
+      setComparisonProgress(0);
+      setComparisonStartTime(null);
+    };
+  }, []);
+
+  // Close background selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (backgroundSelectorRef.current && !backgroundSelectorRef.current.contains(event.target as Node)) {
+        setShowBackgroundSelector(false);
+      }
+    };
+
+    if (showBackgroundSelector) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showBackgroundSelector]);
+
+  // Handle mouse wheel zoom
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const newZoom = Math.max(0.1, Math.min(3, zoom + delta));
+      setZoom(newZoom);
+    },
+    [zoom]
+  );
+
+  // Handle pan start
+  const handlePanStart = useCallback((e: React.MouseEvent) => {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      // Middle mouse or Alt+Left mouse
+      e.preventDefault();
+      setIsPanning(true);
+      setLastPanPoint({ x: e.clientX, y: e.clientY });
+    }
+  }, []);
+
+  // Handle pan move
+  const handlePanMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (isPanning) {
+        e.preventDefault();
+        const deltaX = e.clientX - lastPanPoint.x;
+        const deltaY = e.clientY - lastPanPoint.y;
+
+        setPan((prev) => ({
+          x: prev.x + deltaX,
+          y: prev.y + deltaY,
+        }));
+
+        setLastPanPoint({ x: e.clientX, y: e.clientY });
+      }
+    },
+    [isPanning, lastPanPoint]
+  );
+
+  // Handle pan end
+  const handlePanEnd = useCallback(() => {
+    setIsPanning(false);
+  }, []);
+
+  // Reset zoom and pan
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  // Undo function
+  const undo = useCallback(() => {
+    if (historyIndex <= 0) return;
+
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const newIndex = historyIndex - 1;
+    const imageData = history[newIndex];
+
+    if (imageData) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+
+        // Notify parent about state changes
+        if (onMaskStateChange) {
+          onMaskStateChange(createMaskState(canvas));
+        }
+      };
+      img.src = imageData;
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (onMaskStateChange) {
+        onMaskStateChange(createMaskState(canvas));
+      }
+    }
+
+    setHistoryIndex(newIndex);
+
+    // Notify parent about history change
+    if (onHistoryStateChange) {
+      onHistoryStateChange(history, newIndex);
+    }
+  }, [
+    historyIndex,
+    history,
+    onMaskStateChange,
+    onHistoryStateChange,
+    createMaskState,
+  ]);
+
+  // Redo function
+  const redo = useCallback(() => {
+    if (historyIndex >= history.length - 1) return;
+
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const newIndex = historyIndex + 1;
+    const imageData = history[newIndex];
+
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+
+      // Notify parent about state changes
+      if (onMaskStateChange) {
+        onMaskStateChange(createMaskState(canvas));
+      }
+    };
+    img.src = imageData;
+
+    setHistoryIndex(newIndex);
+
+    // Notify parent about history change
+    if (onHistoryStateChange) {
+      onHistoryStateChange(history, newIndex);
+    }
+  }, [
+    historyIndex,
+    history,
+    onMaskStateChange,
+    onHistoryStateChange,
+    createMaskState,
+  ]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+      const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
+
+      if (ctrlKey && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (ctrlKey && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [undo, redo]);
 
   return (
-    <Card className="p-4 bg-white border-gray-200 shadow-sm">
-      <div className="space-y-4">
-        {/* Controls */}
-        <div className="flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={undo}
-              disabled={disabled || historyIndex <= 0}
-              className="border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              <Undo className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={redo}
-              disabled={disabled || historyIndex >= history.length - 1}
-              className="border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              <Redo className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={clearMask}
-              disabled={disabled}
-              className="border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          </div>
-
+    <div className="h-full flex flex-col">
+      {/* Top toolbar */}
+      <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200">
+        <div className="flex items-center gap-2">
           <Button
-            onClick={handleProcess}
-            disabled={disabled}
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            variant="outline"
+            size="sm"
+            onClick={undo}
+            disabled={disabled || isProcessing || historyIndex <= 0}
+            className="border-gray-300 text-gray-700 hover:opacity-90"
+            title="Undo (Ctrl+Z)"
           >
-            <Wand2 className="w-4 h-4 mr-2" />
-            Remove Objects
+            <Undo className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={redo}
+            disabled={
+              disabled || isProcessing || historyIndex >= history.length - 1
+            }
+            className="border-gray-300 text-gray-700 hover:opacity-90"
+            title="Redo (Ctrl+Y)"
+          >
+            <Redo className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearAll}
+            disabled={disabled || isProcessing || isBackgroundProcessing}
+            className="border-gray-300 text-gray-700 hover:opacity-90"
+            title="Clear All"
+          >
+            <Trash2 className="w-4 h-4" />
           </Button>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* Brush Controls */}
-          <div className="lg:w-64">
-            <BrushControls
-              settings={brushSettings}
-              onSettingsChange={setBrushSettings}
-              disabled={disabled}
-            />
-          </div>
+        <div className="flex items-center gap-2">
+          <ZoomControls
+            zoom={zoom}
+            onZoomChange={setZoom}
+            onPanChange={setPan}
+            disabled={disabled || isProcessing}
+          />
 
-          {/* Canvas Container */}
-          <div className="flex-1">
-            <div
-              ref={containerRef}
-              className="relative bg-gray-50 rounded-lg p-4 overflow-hidden border border-gray-200"
-              style={{ minHeight: "400px" }}
+          {(processedImageUrl || backgroundRemovedImageUrl) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onMouseDown={handleCompareStart}
+              onMouseUp={handleCompareEnd}
+              onMouseLeave={handleCompareEnd}
+              onTouchStart={handleCompareStart}
+              onTouchEnd={handleCompareEnd}
+              disabled={disabled || isProcessing || isBackgroundProcessing}
+              className="border-gray-300 text-gray-700 hover:bg-gray-500"
+              title={`Hold to compare with original${
+                processedImageUrl && backgroundRemovedImageUrl
+                  ? ' (final result)'
+                  : processedImageUrl
+                    ? ' (inpaint result)'
+                    : ' (background removed)'
+              }`}
             >
-              <div
-                className="relative mx-auto"
-                style={{ width: canvasSize.width, height: canvasSize.height }}
-              >
-                <canvas
-                  ref={canvasRef}
-                  className="absolute inset-0 rounded-lg"
-                  style={{
-                    transform: `scale(${zoom})`,
-                    transformOrigin: "top left",
-                  }}
-                />
-                <canvas
-                  ref={maskCanvasRef}
-                  className="absolute inset-0 rounded-lg opacity-60 pointer-events-auto"
-                  style={{
-                    transform: `scale(${zoom})`,
-                    transformOrigin: "top left",
-                    cursor: createMagicWandCursor(
+              <UnfoldHorizontal className="w-4 h-4 " />
+              {/* Compare */}
+            </Button>
+          )}
+          <div className="relative">
+            <Button
+              onClick={onRemoveBackground}
+              disabled={disabled || isBackgroundProcessing || !onRemoveBackground}
+              className="bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
+            >
+              <Scissors className="w-4 h-4 mr-2" />
+              {isBackgroundProcessing ? "Processing..." : "Remove Background"}
+            </Button>
+
+            {/* Background replacement dropdown */}
+            {backgroundRemovedImageUrl && onReplaceBackground && (
+              <div ref={backgroundSelectorRef} className="relative inline-block ml-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowBackgroundSelector(!showBackgroundSelector)}
+                  disabled={disabled || isBackgroundProcessing}
+                  className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                  title="Replace background"
+                >
+                  <Palette className="w-4 h-4 mr-1" />
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+
+                {/* Background selector dropdown */}
+                {showBackgroundSelector && (
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                    <div className="p-3">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Choose Background</h4>
+                      <div className="grid grid-cols-4 gap-2">
+                        {/* Predefined backgrounds */}
+                        {[
+                          { name: 'White', color: '#ffffff' },
+                          { name: 'Black', color: '#000000' },
+                          { name: 'Blue', color: '#3b82f6' },
+                          { name: 'Green', color: '#10b981' },
+                          { name: 'Red', color: '#ef4444' },
+                          { name: 'Purple', color: '#8b5cf6' },
+                          { name: 'Yellow', color: '#f59e0b' },
+                          { name: 'Gray', color: '#6b7280' },
+                        ].map((bg) => (
+                          <button
+                            key={bg.name}
+                            onClick={() => {
+                              // Create a solid color background with image dimensions
+                              const canvas = document.createElement('canvas');
+                              canvas.width = imageData.width;
+                              canvas.height = imageData.height;
+                              const ctx = canvas.getContext('2d');
+                              if (ctx) {
+                                ctx.fillStyle = bg.color;
+                                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                                const dataURL = canvas.toDataURL();
+                                onReplaceBackground?.(dataURL);
+                              }
+                              setShowBackgroundSelector(false);
+                            }}
+                            className="w-12 h-12 rounded border-2 border-gray-200 hover:border-gray-400 transition-colors"
+                            style={{ backgroundColor: bg.color }}
+                            title={bg.name}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <Button
+            onClick={handleProcess}
+            disabled={disabled || isProcessing}
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+          >
+            <Wand2 className="w-4 h-4 mr-2" />
+            {isProcessing ? "Processing..." : "Remove Objects"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Canvas Container */}
+      <div className="flex-1 relative overflow-hidden">
+        <div
+          ref={containerRef}
+          className="absolute inset-0 canvas-container flex items-center justify-center"
+          onWheel={handleWheel}
+          onMouseDown={handlePanStart}
+          onMouseMove={handlePanMove}
+          onMouseUp={handlePanEnd}
+          onMouseLeave={handlePanEnd}
+          style={{ cursor: isPanning ? "grabbing" : "grab" }}
+        >
+          <div
+            className="relative"
+            style={{
+              width: canvasSize.width,
+              height: canvasSize.height,
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: "center center",
+              transition: isPanning ? "none" : "transform 0.1s ease-out",
+            }}
+          >
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 rounded-lg shadow-lg"
+              style={{
+                width: canvasSize.width,
+                height: canvasSize.height,
+              }}
+            />
+            <canvas
+              ref={maskCanvasRef}
+              className="absolute inset-0 rounded-lg"
+              style={{
+                width: canvasSize.width,
+                height: canvasSize.height,
+                opacity: showComparison ? 0 : 0.6, // Hide mask during comparison
+                cursor: isPanning
+                  ? "grabbing"
+                  : createMagicWandCursor(
                       brushSettings.shape,
                       Math.max(20, brushSettings.size)
                     ),
-                  }}
-                  onMouseDown={startDrawing}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={stopDrawing}
-                  onMouseLeave={handleMouseLeave}
-                  onTouchStart={startDrawing}
-                  onTouchMove={draw}
-                  onTouchEnd={stopDrawing}
-                />
+                pointerEvents: isPanning ? "none" : "auto",
+                transition: "opacity 0.2s ease-in-out", // Smooth transition
+              }}
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={stopDrawing}
+              onMouseLeave={stopDrawing}
+              onTouchStart={startDrawing}
+              onTouchMove={draw}
+              onTouchEnd={stopDrawing}
+            />
 
-                {/* Star particles overlay */}
-                <div
-                  className="absolute inset-0 pointer-events-none"
-                  style={{
-                    transform: `scale(${zoom})`,
-                    transformOrigin: "top left",
-                  }}
-                >
-                  {stars.map((star) => (
-                    <div
-                      key={star.id}
-                      className="absolute"
-                      style={{
-                        left: star.x - star.size / 2,
-                        top: star.y - star.size / 2,
-                        width: star.size,
-                        height: star.size,
-                        opacity: star.opacity,
-                        transform: `rotate(${star.rotation}rad)`,
-                        transition: "opacity 0.1s ease-out",
-                      }}
-                    >
-                      <svg
-                        width={star.size}
-                        height={star.size}
-                        viewBox="0 0 24 24"
-                        className="drop-shadow-lg"
-                      >
-                        <defs>
-                          <radialGradient
-                            id={`starGradient-${star.id}`}
-                            cx="50%"
-                            cy="50%"
-                            r="50%"
-                          >
-                            <stop
-                              offset="0%"
-                              stopColor="#FFF"
-                              stopOpacity="0.9"
-                            />
-                            <stop
-                              offset="30%"
-                              stopColor="#FFD700"
-                              stopOpacity="0.8"
-                            />
-                            <stop
-                              offset="100%"
-                              stopColor="#FF6B35"
-                              stopOpacity="0.6"
-                            />
-                          </radialGradient>
-                          <filter id={`glow-${star.id}`}>
-                            <feGaussianBlur
-                              stdDeviation="1.5"
-                              result="coloredBlur"
-                            />
-                            <feMerge>
-                              <feMergeNode in="coloredBlur" />
-                              <feMergeNode in="SourceGraphic" />
-                            </feMerge>
-                          </filter>
-                        </defs>
-                        <path
-                          d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                          fill={`url(#starGradient-${star.id})`}
-                          stroke="#FFB347"
-                          strokeWidth="0.3"
-                          filter={`url(#glow-${star.id})`}
-                        />
-                        <circle
-                          cx="12"
-                          cy="12"
-                          r="0.8"
-                          fill="#FFF"
-                          opacity="0.9"
-                        />
-                      </svg>
+            {/* Processing Overlay */}
+            {isProcessing && (
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-sm rounded-lg flex items-center justify-center z-50">
+                <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-8 shadow-2xl text-center">
+                  <div className="relative mb-6">
+                    <div className="w-16 h-16 mx-auto">
+                      <Sparkles className="w-16 h-16 text-blue-500 animate-spin" />
                     </div>
-                  ))}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-8 h-8 bg-blue-500 rounded-full animate-pulse"></div>
+                    </div>
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-800 mb-2">
+                    Processing Image
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    AI is removing unwanted objects...
+                  </p>
+                  <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></div>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></div>
+                  </div>
                 </div>
               </div>
+            )}
+          </div>
+        </div>
 
-              {/* Zoom Controls */}
-              <div className="absolute top-4 right-4">
-                <ZoomControls
-                  zoom={zoom}
-                  onZoomChange={setZoom}
-                  disabled={disabled}
+        {/* Comparison Overlay */}
+        {showComparison && getComparisonImageUrl() && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <div
+              className="relative"
+              style={{
+                width: canvasSize.width,
+                height: canvasSize.height,
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: "center center",
+              }}
+            >
+              {/* Processed image overlay with clip-path */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,
+                  transition:
+                    comparisonProgress === 0
+                      ? "none"
+                      : "clip-path 0.1s ease-out",
+                }}
+              >
+                <img
+                  src={getComparisonImageUrl()!}
+                  alt={`${comparisonMode === 'final' ? 'Final result' : comparisonMode === 'background' ? 'Background removed' : 'Inpaint result'} overlay`}
+                  className="w-full h-full object-contain rounded-lg"
                 />
               </div>
-            </div>
-          </div>
-        </div>
 
-        <div className="text-sm text-gray-600 text-center space-y-1">
-          <div>
-            Paint over the areas you want to remove with your chosen color, then
-            click &quot;Remove Objects&quot; to process
+              {/* Sweep line */}
+              {comparisonProgress > 0 && comparisonProgress < 1 && (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg z-10"
+                  style={{
+                    left: `${comparisonProgress * 100}%`,
+                    transform: "translateX(-50%)",
+                  }}
+                />
+              )}
+            </div>
+
+            {/* Progress indicator */}
+            {/* <div className="absolute top-4 left-4 bg-black/70 text-white px-3 py-1 rounded-full text-sm font-medium z-20">
+              {Math.round(comparisonProgress * 100)}% Processed
+            </div> */}
           </div>
-          <div className="text-xs text-blue-600">
-            ✨ Watch for magical star effects while painting!
-          </div>
-        </div>
+        )}
       </div>
-    </Card>
+    </div>
   );
 };
