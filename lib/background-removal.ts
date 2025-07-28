@@ -174,22 +174,6 @@ export const replaceBackground = async (
   }
 };
 
-// Get available background removal models from server
-export const getAvailableModels = async (): Promise<string[]> => {
-  try {
-    const response = await fetch('http://localhost:8080/api/v1/server-config');
-    if (!response.ok) {
-      throw new Error(`Failed to get server config: ${response.statusText}`);
-    }
-    
-    const config = await response.json();
-    return config.removeBGModels || ['u2net'];
-  } catch (error) {
-    console.error('Failed to get available models:', error);
-    // Return default models if API call fails
-    return ['u2net', 'u2netp', 'u2net_human_seg', 'briaai/RMBG-1.4'];
-  }
-};
 
 // Predefined background images (using placeholder images for now)
 export const getDefaultBackgrounds = (): Array<{ name: string; url: string; thumbnail: string }> => {

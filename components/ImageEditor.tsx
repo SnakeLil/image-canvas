@@ -525,29 +525,30 @@ export const ImageEditor: React.FC = () => {
 
       // Add a history entry for background removal operation
       // This allows users to undo back to the state before background removal
-      const currentHistoryState = getCurrentHistoryState();
-      if (currentHistoryState) {
-        const newHistory = [...currentHistoryState.history];
-        const newIndex = currentHistoryState.historyIndex + 1;
+      
+      // const currentHistoryState = getCurrentHistoryState();
+      // if (currentHistoryState) {
+      //   const newHistory = [...currentHistoryState.history];
+      //   const newIndex = currentHistoryState.historyIndex + 1;
 
-        // Add a marker entry to indicate background removal operation
-        // We'll use an empty canvas as the mask state since background removal doesn't use masks
-        const emptyCanvas = document.createElement('canvas');
-        emptyCanvas.width = canvas.width;
-        emptyCanvas.height = canvas.height;
-        const emptyMaskDataURL = emptyCanvas.toDataURL();
+      //   // Add a marker entry to indicate background removal operation
+      //   // We'll use an empty canvas as the mask state since background removal doesn't use masks
+      //   const emptyCanvas = document.createElement('canvas');
+      //   emptyCanvas.width = canvas.width;
+      //   emptyCanvas.height = canvas.height;
+      //   const emptyMaskDataURL = emptyCanvas.toDataURL();
 
-        newHistory.splice(newIndex, newHistory.length - newIndex, emptyMaskDataURL);
+      //   newHistory.splice(newIndex, newHistory.length - newIndex, emptyMaskDataURL);
 
-        // Update history state directly
-        setProject(prev => ({
-          ...prev,
-          historyStates: {
-            ...prev.historyStates,
-            [currentImage.id]: { history: newHistory, historyIndex: newIndex }
-          }
-        }));
-      }
+      //   // Update history state directly
+      //   setProject(prev => ({
+      //     ...prev,
+      //     historyStates: {
+      //       ...prev.historyStates,
+      //       [currentImage.id]: { history: newHistory, historyIndex: newIndex }
+      //     }
+      //   }));
+      // }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove background. Please try again.');
@@ -615,28 +616,29 @@ export const ImageEditor: React.FC = () => {
       }));
 
       // Add a history entry for background replacement operation
-      const currentHistoryState = getCurrentHistoryState();
-      if (currentHistoryState) {
-        const newHistory = [...currentHistoryState.history];
-        const newIndex = currentHistoryState.historyIndex + 1;
 
-        // Add a marker entry to indicate background replacement operation
-        const emptyCanvas = document.createElement('canvas');
-        emptyCanvas.width = currentImage.width;
-        emptyCanvas.height = currentImage.height;
-        const emptyMaskDataURL = emptyCanvas.toDataURL();
+      // const currentHistoryState = getCurrentHistoryState();
+      // if (currentHistoryState) {
+      //   const newHistory = [...currentHistoryState.history];
+      //   const newIndex = currentHistoryState.historyIndex + 1;
 
-        newHistory.splice(newIndex, newHistory.length - newIndex, emptyMaskDataURL);
+      //   // Add a marker entry to indicate background replacement operation
+      //   const emptyCanvas = document.createElement('canvas');
+      //   emptyCanvas.width = currentImage.width;
+      //   emptyCanvas.height = currentImage.height;
+      //   const emptyMaskDataURL = emptyCanvas.toDataURL();
 
-        // Update history state directly
-        setProject(prev => ({
-          ...prev,
-          historyStates: {
-            ...prev.historyStates,
-            [currentImage.id]: { history: newHistory, historyIndex: newIndex }
-          }
-        }));
-      }
+      //   newHistory.splice(newIndex, newHistory.length - newIndex, emptyMaskDataURL);
+
+      //   // Update history state directly
+      //   setProject(prev => ({
+      //     ...prev,
+      //     historyStates: {
+      //       ...prev.historyStates,
+      //       [currentImage.id]: { history: newHistory, historyIndex: newIndex }
+      //     }
+      //   }));
+      // }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to replace background. Please try again.');
@@ -868,6 +870,8 @@ export const ImageEditor: React.FC = () => {
                   onHistoryStateChange={handleHistoryStateChange}
                   isProcessing={getCurrentProcessingState()}
                   processedImageUrl={getCurrentProcessedUrl()}
+                  finalResult={getCurrentFinalResult()}
+                  currentImage={getCurrentImage()}
                   onShowHelp={() => {
                     // This will be handled by CanvasEditor's internal logic
                   }}

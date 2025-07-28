@@ -4,7 +4,8 @@ export type CursorShape =
   | "star"
   | "sparkle"
   | "circle"
-  | "heart";
+  | "heart"
+  | "brush";
 
 // 光标形状配置
 export const cursorShapes = {

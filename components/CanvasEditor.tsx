@@ -49,6 +49,8 @@ interface CanvasEditorProps {
   onReplaceBackground?: (backgroundUrl: string) => void;
   // Clear all operations
   onClearAll?: () => void;
+  finalResult?: { url: string | null; type: 'inpaint' | 'background' | 'final' | 'none' };
+  currentImage?: ImageData | null;
 }
 
 interface BrushSettings {
@@ -76,6 +78,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   backgroundRemovedImageUrl,
   onReplaceBackground,
   onClearAll,
+  finalResult,
+  currentImage
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -467,7 +471,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   // Comparison handlers
   const handleCompareStart = () => {
-    const comparisonImageUrl = getComparisonImageUrl();
+    const comparisonImageUrl = finalResult?.url
     if (comparisonImageUrl) {
       setComparisonMode(getCurrentComparisonMode());
       setShowComparison(true);
@@ -571,12 +575,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   // Handle pan end
   const handlePanEnd = useCallback(() => {
     setIsPanning(false);
-  }, []);
-
-  // Reset zoom and pan
-  const resetView = useCallback(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
   }, []);
 
   // Undo function
@@ -919,7 +917,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         </div>
 
         {/* Comparison Overlay */}
-        {showComparison && getComparisonImageUrl() && (
+        {showComparison && finalResult?.url && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
             <div
               className="relative"
@@ -934,7 +932,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
               <div
                 className="absolute inset-0"
                 style={{
-                  clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,
+                  // clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,
                   transition:
                     comparisonProgress === 0
                       ? "none"
@@ -942,9 +940,20 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 }}
               >
                 <img
-                  src={getComparisonImageUrl()!}
+                  src={finalResult?.url!}
                   alt={`${comparisonMode === 'final' ? 'Final result' : comparisonMode === 'background' ? 'Background removed' : 'Inpaint result'} overlay`}
-                  className="w-full h-full object-contain rounded-lg"
+                  className="w-full absolute inset-0 h-full object-contain rounded-lg"
+                  style={{
+                    clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,
+                  }}
+                />
+                <img
+                  src={currentImage?.url!}
+                  alt={`${comparisonMode === 'final' ? 'Final result' : comparisonMode === 'background' ? 'Background removed' : 'Inpaint result'} overlay`}
+                  className="w-full absolute inset-0 h-full object-contain rounded-lg"
+                  style={{
+                    clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,
+                  }}
                 />
               </div>
 
