@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Plus, X, Download, Sparkles } from 'lucide-react';
 import type { ImageData } from './ImageEditor';
 
@@ -30,18 +30,30 @@ export const ImageThumbnails: React.FC<ImageThumbnailsProps> = ({
   backgroundProcessingStates = {}
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  // Common function to handle files (used by both file input and drag & drop)
+  const handleFiles = (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    // Filter only image files
+    const imageFiles = fileArray.filter(file => file.type.startsWith('image/'));
+
+    if (imageFiles.length === 0) return;
+
+    if (imageFiles.length === 1) {
+      onImageAdd(imageFiles[0]);
+    } else if (imageFiles.length > 1 && onMultipleImageAdd) {
+      onMultipleImageAdd(imageFiles);
+    } else {
+      // Fallback: add files one by one if no multiple handler
+      imageFiles.forEach(file => onImageAdd(file));
+    }
+  };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
-      if (files.length === 1) {
-        onImageAdd(files[0]);
-      } else if (files.length > 1 && onMultipleImageAdd) {
-        onMultipleImageAdd(Array.from(files));
-      } else {
-        // Fallback: add files one by one if no multiple handler
-        Array.from(files).forEach(file => onImageAdd(file));
-      }
+      handleFiles(files);
       // Reset the input so the same files can be selected again
       event.target.value = '';
     }
@@ -51,8 +63,52 @@ export const ImageThumbnails: React.FC<ImageThumbnailsProps> = ({
     fileInputRef.current?.click();
   };
 
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set isDragOver to false if we're leaving the container itself
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFiles(files);
+    }
+  };
+
   return (
-    <div className="h-28 fixed bottom-0 bg-white border-t border-gray-200 px-4 py-2 w-full">
+    <div
+      className={`h-28 fixed bottom-0 bg-white border-t border-gray-200 px-4 py-2 w-full transition-colors ${
+        isDragOver ? 'bg-blue-50 border-blue-300' : ''
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-blue-100/80 border-2 border-dashed border-blue-400 flex items-center justify-center z-50">
+          <div className="text-blue-600 font-medium text-lg flex items-center space-x-2">
+            <Plus className="w-6 h-6" />
+            <span>Drop images here to upload</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center space-x-4 h-full max-w-full">
         <div className="text-sm font-medium text-gray-700 flex-shrink-0">
           Images ({images.length}):

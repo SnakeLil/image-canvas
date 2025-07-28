@@ -62,9 +62,9 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
     }
   };
   return (
-    <div className="w-80 bg-gray-50 border-l border-gray-200 flex flex-col">
+    <div className="w-80 bg-gray-50 border-l border-gray-200 flex flex-col pb-8">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-white">
+      <div className="p-4 h-[73px] border-b border-gray-200 bg-white">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-medium text-gray-800">Tools</h3>
           <Button
@@ -206,84 +206,6 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
             onSettingsChange={onBrushSettingsChange}
             disabled={disabled}
           />
-        </Card>
-
-        {/* Effects Panel */}
-        <Card className="p-4 bg-white border border-gray-200 shadow-sm">
-          <h4 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
-            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-            AI Effects
-          </h4>
-          <div className="space-y-4">
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 rounded-lg border border-blue-100">
-              <div className="text-xs font-medium text-blue-700 mb-1">✨ Smart Removal</div>
-              <div className="text-xs text-blue-600">
-                Paint over objects to remove them intelligently
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              <button className="p-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-sm font-medium hover:from-blue-600 hover:to-blue-700 transition-all shadow-sm">
-                🪄 Magic Eraser
-              </button>
-              <button className="p-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg text-sm font-medium hover:from-purple-600 hover:to-purple-700 transition-all shadow-sm">
-                🎨 Smart Fill
-              </button>
-            </div>
-
-            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-              💡 Tip: Use larger brush sizes for better results on complex objects
-            </div>
-          </div>
-        </Card>
-
-        {/* Processed Image Preview */}
-       
-
-        {/* Quick Actions */}
-        <Card className="p-4 bg-white border border-gray-200 shadow-sm">
-          <h4 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
-            <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-            Quick Actions
-          </h4>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex flex-col items-center gap-1 h-auto py-3 border-gray-200 hover:border-red-300 hover:bg-red-50"
-              disabled={disabled}
-            >
-              <span className="text-lg">🗑️</span>
-              <span className="text-xs">Clear</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex flex-col items-center gap-1 h-auto py-3 border-gray-200 hover:border-blue-300 hover:bg-blue-50"
-              disabled={disabled}
-            >
-              <span className="text-lg">↶</span>
-              <span className="text-xs">Undo</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex flex-col items-center gap-1 h-auto py-3 border-gray-200 hover:border-green-300 hover:bg-green-50"
-              disabled={disabled}
-            >
-              <span className="text-lg">↷</span>
-              <span className="text-xs">Redo</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex flex-col items-center gap-1 h-auto py-3 border-gray-200 hover:border-purple-300 hover:bg-purple-50"
-              disabled={disabled}
-            >
-              <span className="text-lg">🔄</span>
-              <span className="text-xs">Reset</span>
-            </Button>
-          </div>
         </Card>
       </div>
 
