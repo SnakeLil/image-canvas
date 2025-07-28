@@ -94,7 +94,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const [showComparison, setShowComparison] = useState(false);
   const [comparisonProgress, setComparisonProgress] = useState(0);
   const [comparisonTargetProgress, setComparisonTargetProgress] = useState(0);
-  const [comparisonMode, setComparisonMode] = useState<'inpaint' | 'background' | 'final'>('inpaint');
   const [showBackgroundSelector, setShowBackgroundSelector] = useState(false);
   const backgroundSelectorRef = useRef<HTMLDivElement>(null);
 
@@ -276,11 +275,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     img.onload = () => {
       ctx.drawImage(img, 0, 0, newWidth, newHeight);
     };
-    img.src = backgroundRemovedImageUrl || imageData.url;
+    img.src = finalResult?.url || imageData.url;
 
     // Clear mask (restoration is handled by separate useEffect)
     maskCtx.clearRect(0, 0, newWidth, newHeight);
-  }, [imageData, backgroundRemovedImageUrl]);
+  }, [imageData, backgroundRemovedImageUrl, finalResult]);
 
   const startDrawing = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
@@ -437,39 +436,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     onProcessImage(maskCanvasRef.current);
   }, [onProcessImage]);
 
-  // Determine which comparison image to show
-  const getComparisonImageUrl = useCallback(() => {
-    // When both results exist, we need to determine which one is the final result
-    // The final result is the one that was processed last
-    if (processedImageUrl && backgroundRemovedImageUrl) {
-      // If we have both, show the background removed result as it's likely the final step
-      // (since background removal uses the processed image as input when available)
-      return backgroundRemovedImageUrl;
-    } else if (processedImageUrl) {
-      return processedImageUrl;
-    } else if (backgroundRemovedImageUrl) {
-      return backgroundRemovedImageUrl;
-    }
-    return null;
-  }, [processedImageUrl, backgroundRemovedImageUrl]);
-
-  // Determine comparison mode based on available results
-  const getCurrentComparisonMode = useCallback(() => {
-    if (processedImageUrl && backgroundRemovedImageUrl) {
-      return 'final'; // Show original vs final result (background removed after inpaint)
-    } else if (processedImageUrl) {
-      return 'inpaint'; // Show original vs inpaint result
-    } else if (backgroundRemovedImageUrl) {
-      return 'background'; // Show original vs background removed
-    }
-    return 'inpaint'; // Default
-  }, [processedImageUrl, backgroundRemovedImageUrl]);
-
   // Comparison handlers
   const handleCompareStart = () => {
     const comparisonImageUrl = finalResult?.url
     if (comparisonImageUrl) {
-      setComparisonMode(getCurrentComparisonMode());
       setShowComparison(true);
       setComparisonTargetProgress(1); // Target is full progress
     }
@@ -951,7 +921,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
               >
                 <img
                   src={finalResult?.url!}
-                  alt={`${comparisonMode === 'final' ? 'Final result' : comparisonMode === 'background' ? 'Background removed' : 'Inpaint result'} overlay`}
                   className="w-full absolute inset-0 h-full object-contain rounded-lg"
                   style={{
                     clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,
@@ -959,7 +928,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 />
                 <img
                   src={imageData?.url!}
-                  alt={`${comparisonMode === 'final' ? 'Final result' : comparisonMode === 'background' ? 'Background removed' : 'Inpaint result'} overlay`}
                   className="w-full absolute inset-0 h-full object-contain rounded-lg"
                   style={{
                     clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,

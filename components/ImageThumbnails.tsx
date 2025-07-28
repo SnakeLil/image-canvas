@@ -52,7 +52,7 @@ export const ImageThumbnails: React.FC<ImageThumbnailsProps> = ({
   };
 
   return (
-    <div className="h-28 bg-white border-t border-gray-200 px-4 py-2 w-full">
+    <div className="h-28 fixed bottom-0 bg-white border-t border-gray-200 px-4 py-2 w-full">
       <div className="flex items-center space-x-4 h-full max-w-full">
         <div className="text-sm font-medium text-gray-700 flex-shrink-0">
           Images ({images.length}):
