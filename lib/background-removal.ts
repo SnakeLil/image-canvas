@@ -1,5 +1,7 @@
 // Background removal service using iopaint API
 
+import { BASE_URL } from "@/components/ImageEditor";
+
 export interface BackgroundRemovalOptions {
   model?: 'u2net' | 'u2netp' | 'u2net_human_seg' | 'u2net_cloth_seg' | 'silueta' | 'isnet-general-use' | 'briaai/RMBG-1.4';
 }
@@ -73,7 +75,7 @@ export const removeBackground = async (
       scale: 1.0
     };
 
-    const response = await fetch('https://faith1314666-imggen-magic-wand.hf.space/api/v1/run_plugin_gen_image', {
+    const response = await fetch(`${BASE_URL}/api/v1/run_plugin_gen_image`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

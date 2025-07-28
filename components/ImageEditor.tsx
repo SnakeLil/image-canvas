@@ -15,7 +15,7 @@ import { type AIProvider } from "@/lib/ai-services";
 import { Button } from "@/components/ui/button";
 import { Settings } from "lucide-react";
 import { removeBackground, canvasToBase64 } from "@/lib/background-removal";
-import { DragOverlay } from "./DragOverLay";
+import { DragOverlay } from "./DragOverlay";
 
 export interface ImageData {
   id: string;
@@ -42,6 +42,8 @@ export interface ImageProject {
   backgroundRemovedTimestamps: Record<string, number>; // imageId -> timestamp when background removal was completed
 }
 
+export const BASE_URL = 'https://faith1314666-imggen-magic-wand.hf.space'
+
 export const ImageEditor: React.FC = () => {
   const [project, setProject] = useState<ImageProject>({
     images: [],
@@ -62,7 +64,7 @@ export const ImageEditor: React.FC = () => {
   const [apiConfig, setApiConfig] = useState({
     provider: "iopaint" as AIProvider,
     apiKey: "",
-    baseUrl: "https://faith1314666-imggen-magic-wand.hf.space",
+    baseUrl: BASE_URL,
   });
   const [brushSettings, setBrushSettings] = useState({
     size: 20,
