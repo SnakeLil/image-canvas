@@ -50,7 +50,6 @@ interface CanvasEditorProps {
   // Clear all operations
   onClearAll?: () => void;
   finalResult?: { url: string | null; type: 'inpaint' | 'background' | 'final' | 'none' };
-  currentImage?: ImageData | null;
 }
 
 interface BrushSettings {
@@ -79,7 +78,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onReplaceBackground,
   onClearAll,
   finalResult,
-  currentImage
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -95,9 +93,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     });
   const [showComparison, setShowComparison] = useState(false);
   const [comparisonProgress, setComparisonProgress] = useState(0);
-  const [comparisonStartTime, setComparisonStartTime] = useState<number | null>(
-    null
-  );
+  const [comparisonTargetProgress, setComparisonTargetProgress] = useState(0);
   const [comparisonMode, setComparisonMode] = useState<'inpaint' | 'background' | 'final'>('inpaint');
   const [showBackgroundSelector, setShowBackgroundSelector] = useState(false);
   const backgroundSelectorRef = useRef<HTMLDivElement>(null);
@@ -475,29 +471,43 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (comparisonImageUrl) {
       setComparisonMode(getCurrentComparisonMode());
       setShowComparison(true);
-      setComparisonProgress(0);
-      setComparisonStartTime(Date.now());
+      setComparisonTargetProgress(1); // Target is full progress
     }
   };
 
   const handleCompareEnd = () => {
-    setShowComparison(false);
-    setComparisonProgress(0);
-    setComparisonStartTime(null);
+    setComparisonTargetProgress(0); // Target is zero progress
   };
 
   // Animation effect for comparison
   useEffect(() => {
-    if (!showComparison || !comparisonStartTime) return;
+    if (!showComparison) return;
 
     const animateProgress = () => {
-      const elapsed = Date.now() - comparisonStartTime;
-      const progress = Math.min(elapsed / 400, 1); // 1 second for full sweep
-      setComparisonProgress(progress);
+      const currentProgress = comparisonProgress;
+      const targetProgress = comparisonTargetProgress;
 
-      if (progress < 1 && showComparison) {
-        requestAnimationFrame(animateProgress);
+      if (Math.abs(currentProgress - targetProgress) < 0.01) {
+        // Close enough to target, set exact value
+        setComparisonProgress(targetProgress);
+        if (targetProgress === 0) {
+          setShowComparison(false);
+        }
+        return;
       }
+
+      // Calculate step size for smooth animation (same speed regardless of direction)
+      const step = 0.025; // This gives us ~400ms for full sweep (1/0.025 = 40 frames at 60fps)
+      const direction = targetProgress > currentProgress ? 1 : -1;
+      const newProgress = currentProgress + (step * direction);
+
+      // Clamp to target if we would overshoot
+      const clampedProgress = direction > 0
+        ? Math.min(newProgress, targetProgress)
+        : Math.max(newProgress, targetProgress);
+
+      setComparisonProgress(clampedProgress);
+      requestAnimationFrame(animateProgress);
     };
 
     const animationId = requestAnimationFrame(animateProgress);
@@ -505,14 +515,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [showComparison, comparisonStartTime]);
+  }, [showComparison, comparisonProgress, comparisonTargetProgress]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       setShowComparison(false);
       setComparisonProgress(0);
-      setComparisonStartTime(null);
+      setComparisonTargetProgress(0);
     };
   }, []);
 
@@ -948,7 +958,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                   }}
                 />
                 <img
-                  src={currentImage?.url!}
+                  src={imageData?.url!}
                   alt={`${comparisonMode === 'final' ? 'Final result' : comparisonMode === 'background' ? 'Background removed' : 'Inpaint result'} overlay`}
                   className="w-full absolute inset-0 h-full object-contain rounded-lg"
                   style={{

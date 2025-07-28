@@ -871,7 +871,6 @@ export const ImageEditor: React.FC = () => {
                   isProcessing={getCurrentProcessingState()}
                   processedImageUrl={getCurrentProcessedUrl()}
                   finalResult={getCurrentFinalResult()}
-                  currentImage={getCurrentImage()}
                   onShowHelp={() => {
                     // This will be handled by CanvasEditor's internal logic
                   }}
