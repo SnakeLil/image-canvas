@@ -2,7 +2,8 @@
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import { ZoomControls } from "./ZoomControls";
-import { createMagicWandCursor } from "./MagicCursor";
+import { ImageCanvas } from "./ImageCanvas";
+import { MaskCanvas, type MaskState, type BrushSettings } from "./MaskCanvas";
 import { Button } from "@/components/ui/button";
 import {
   Undo,
@@ -16,12 +17,6 @@ import {
   ChevronDown,
 } from "lucide-react";
 import type { ImageData } from "./ImageEditor";
-
-export interface MaskState {
-  dataURL: string;
-  width: number;
-  height: number;
-}
 
 interface CanvasEditorProps {
   imageData: ImageData;
@@ -49,14 +44,10 @@ interface CanvasEditorProps {
   onReplaceBackground?: (backgroundUrl: string) => void;
   // Clear all operations
   onClearAll?: () => void;
-  finalResult?: { url: string | null; type: 'inpaint' | 'background' | 'final' | 'none' };
-}
-
-interface BrushSettings {
-  size: number;
-  opacity: number;
-  color: string;
-  shape: import("./MagicCursor").CursorShape;
+  finalResult?: {
+    url: string | null;
+    type: "inpaint" | "background" | "final" | "none";
+  };
 }
 
 const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
@@ -79,396 +70,52 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
   onClearAll,
   finalResult,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
+  const maskCanvasRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [internalBrushSettings, setInternalBrushSettings] =
-    useState<BrushSettings>({
-      size: 20,
-      opacity: 100,
-      color: "#ff3333",
-      shape: "magic-wand",
-    });
   const [showComparison, setShowComparison] = useState(false);
   const [comparisonProgress, setComparisonProgress] = useState(0);
   const [comparisonTargetProgress, setComparisonTargetProgress] = useState(0);
   const [showBackgroundSelector, setShowBackgroundSelector] = useState(false);
   const backgroundSelectorRef = useRef<HTMLDivElement>(null);
 
-  console.log('canvas editor 重渲染')
-
-  // Use ref to store brush settings to avoid re-renders
-  const brushSettingsRef = useRef<BrushSettings>(
-    externalBrushSettings || internalBrushSettings
-  );
-
-  // Update ref when external settings change, but don't trigger re-render
-  useEffect(() => {
-    brushSettingsRef.current = externalBrushSettings || internalBrushSettings;
-  }, [externalBrushSettings, internalBrushSettings]);
-
-  // Helper function to create mask state
-  const createMaskState = useCallback(
-    (canvas: HTMLCanvasElement): MaskState => {
-      return {
-        dataURL: canvas.toDataURL(),
-        width: canvas.width,
-        height: canvas.height,
-      };
-    },
-    []
-  );
-
-  // Helper function to draw a line between two points - optimized to avoid re-renders
-  const drawLine = useCallback(
-    (
-      ctx: CanvasRenderingContext2D,
-      from: { x: number; y: number },
-      to: { x: number; y: number }
-    ) => {
-      const currentBrushSize = brushSettingsRef.current.size;
-      const distance = Math.sqrt(
-        Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2)
-      );
-      const steps = Math.max(
-        1,
-        Math.floor(distance / (currentBrushSize / 4))
-      ); // More steps for smoother lines
-
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const x = from.x + (to.x - from.x) * t;
-        const y = from.y + (to.y - from.y) * t;
-
-        ctx.beginPath();
-        ctx.arc(x, y, currentBrushSize / 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    },
-    [] // No dependencies - stable function
-  );
-
+  // Canvas state
   const [zoom, setZoom] = useState(1);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
-  const [lastDrawPoint, setLastDrawPoint] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [previousDrawPoint, setPreviousDrawPoint] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  // Simplified history system - back to dataURL but with optimizations
-  const [history, setHistory] = useState<string[]>(
-    initialHistoryState?.history || []
-  );
-  const [historyIndex, setHistoryIndex] = useState(
-    initialHistoryState?.historyIndex || -1
-  );
 
-  // Sync history state when props change (image switching)
-  useEffect(() => {
-    if (initialHistoryState) {
-      setHistory(initialHistoryState.history);
-      setHistoryIndex(initialHistoryState.historyIndex);
-    } else {
-      // Reset to empty state for new images
-      setHistory([]);
-      setHistoryIndex(-1);
-    }
-  }, [initialHistoryState]);
+  const defaultBrushSettings: BrushSettings = {
+    size: 20,
+    opacity: 100,
+    color: "#ff3333",
+    shape: "circle",
+  };
 
-  // Restore mask state when switching images - optimized to reduce flicker
-  useEffect(() => {
-    const canvas = maskCanvasRef.current;
-    if (!canvas || !canvasSize.width || !canvasSize.height) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Use requestAnimationFrame to batch canvas operations
-    requestAnimationFrame(() => {
-      // Clear current mask
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Restore mask state if available
-      if (initialMaskState) {
-        const img = new Image();
-        img.onload = () => {
-          // Scale the mask to fit current canvas size
-          const scaleX = canvasSize.width / initialMaskState.width;
-          const scaleY = canvasSize.height / initialMaskState.height;
-
-          // Use another requestAnimationFrame to ensure smooth rendering
-          requestAnimationFrame(() => {
-            // If the aspect ratios match, scale uniformly
-            if (Math.abs(scaleX - scaleY) < 0.01) {
-              ctx.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
-            } else {
-              // If aspect ratios don't match, this might be from a different image
-              // Only restore if dimensions match exactly to avoid confusion
-              if (
-                initialMaskState.width === canvasSize.width &&
-                initialMaskState.height === canvasSize.height
-              ) {
-                ctx.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
-              }
-            }
-          });
-        };
-        img.src = initialMaskState.dataURL;
-      }
-    });
-  }, [initialMaskState, canvasSize]);
-
-  // Save initial blank state for new images (when no history exists)
-  useEffect(() => {
-    const canvas = maskCanvasRef.current;
-    if (!canvas || !canvasSize.width || !canvasSize.height) return;
-
-    // Only save initial state if no history exists (new image)
-    if (history.length === 0 && historyIndex === -1) {
-      const dataURL = canvas.toDataURL();
-      setHistory([dataURL]);
-      setHistoryIndex(0);
-
-      // Notify parent about initial state
-      if (onHistoryStateChange) {
-        onHistoryStateChange([dataURL], 0);
-      }
-      if (onMaskStateChange) {
-        onMaskStateChange(createMaskState(canvas));
-      }
-    }
-  }, [
-    canvasSize,
-    history.length,
-    historyIndex,
-    onHistoryStateChange,
-    onMaskStateChange,
-    createMaskState,
-  ]);
-
-  // Maximum canvas dimensions
-  const MAX_CANVAS_WIDTH = 800;
-  const MAX_CANVAS_HEIGHT = 600;
-
-  // Initialize canvas - optimized to reduce flicker
-  useEffect(() => {
-    if (!imageData || !canvasRef.current || !maskCanvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const maskCanvas = maskCanvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const maskCtx = maskCanvas.getContext("2d");
-
-    if (!ctx || !maskCtx) return;
-
-    // Calculate canvas size with maximum constraints
-    const aspectRatio = imageData.width / imageData.height;
-    let newWidth = Math.min(imageData.width, MAX_CANVAS_WIDTH);
-    let newHeight = newWidth / aspectRatio;
-
-    if (newHeight > MAX_CANVAS_HEIGHT) {
-      newHeight = MAX_CANVAS_HEIGHT;
-      newWidth = newHeight * aspectRatio;
-    }
-
-    // Batch all canvas operations in a single frame
-    requestAnimationFrame(() => {
-      setCanvasSize({ width: newWidth, height: newHeight });
-
-      // Set canvas dimensions
-      canvas.width = newWidth;
-      canvas.height = newHeight;
-      maskCanvas.width = newWidth;
-      maskCanvas.height = newHeight;
-
-      // Clear mask first (restoration is handled by separate useEffect)
-      maskCtx.clearRect(0, 0, newWidth, newHeight);
-
-      // Draw image (use background removed version if available, otherwise original)
-      const img = new Image();
-      img.onload = () => {
-        // Use another requestAnimationFrame to ensure smooth rendering
-        requestAnimationFrame(() => {
-          ctx.drawImage(img, 0, 0, newWidth, newHeight);
-        });
-      };
-      img.src = finalResult?.url || imageData.url;
-    });
-  }, [imageData, backgroundRemovedImageUrl, finalResult]);
-
-  const startDrawing = useCallback(
-    (e: React.MouseEvent | React.TouchEvent) => {
-      if (disabled || isPanning || isProcessing) return;
-      setIsDrawing(true);
-
-      const canvas = maskCanvasRef.current;
-      if (!canvas) return;
-
-      const rect = canvas.getBoundingClientRect();
-      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
-
-      // Account for zoom and pan transformations
-      const x =
-        (clientX - rect.left - rect.width / 2) / zoom + canvasSize.width / 2;
-      const y =
-        (clientY - rect.top - rect.height / 2) / zoom + canvasSize.height / 2;
-
-      // Store the starting point but don't draw yet
-      setLastDrawPoint({ x, y });
-      setPreviousDrawPoint({ x, y });
-    },
-    [disabled, isPanning, isProcessing, zoom, canvasSize]
-  );
-
-  const draw = useCallback(
-    (e: React.MouseEvent | React.TouchEvent) => {
-      if (!isDrawing || disabled || isPanning || isProcessing) return;
-
-      const canvas = maskCanvasRef.current;
-      if (!canvas) return;
-
-      const rect = canvas.getBoundingClientRect();
-      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
-
-      // Account for zoom and pan transformations
-      const x =
-        (clientX - rect.left - rect.width / 2) / zoom + canvasSize.width / 2;
-      const y =
-        (clientY - rect.top - rect.height / 2) / zoom + canvasSize.height / 2;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      // Get current brush settings from ref to avoid re-renders
-      const currentBrush = brushSettingsRef.current;
-
-      ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = currentBrush.color;
-      ctx.globalAlpha = currentBrush.opacity / 100;
-
-      // If this is the first draw after starting, draw the starting point too
-      if (lastDrawPoint) {
-        ctx.beginPath();
-        ctx.arc(
-          lastDrawPoint.x,
-          lastDrawPoint.y,
-          currentBrush.size / 2,
-          0,
-          Math.PI * 2
-        );
-        ctx.fill();
-        setLastDrawPoint(null); // Clear the starting point
-      }
-
-      // Draw line from previous point to current point for smooth drawing
-      if (previousDrawPoint) {
-        drawLine(ctx, previousDrawPoint, { x, y });
-      } else {
-        // Draw current point if no previous point
-        ctx.beginPath();
-        ctx.arc(x, y, currentBrush.size / 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Update previous point
-      setPreviousDrawPoint({ x, y });
-    },
-    [
-      isDrawing,
-      disabled,
-      isPanning,
-      isProcessing,
-      zoom,
-      canvasSize,
-      lastDrawPoint,
-      previousDrawPoint,
-      drawLine,
-    ]
-  );
-
-  // Save current state to history - optimized to reduce flicker
-  const saveToHistory = useCallback(() => {
-    const canvas = maskCanvasRef.current;
-    if (!canvas) return;
-
-    const dataURL = canvas.toDataURL();
-
-    setHistory((prev) => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(dataURL);
-      const finalHistory = newHistory.slice(-20);
-
-      // Notify parent immediately with the new history
-      const newIndex = finalHistory.length - 1;
-      if (onHistoryStateChange) {
-        onHistoryStateChange(finalHistory, newIndex);
-      }
-
-      return finalHistory;
-    });
-
-    setHistoryIndex((prev) => prev + 1);
-
-    // Notify about mask state change
-    if (onMaskStateChange) {
-      onMaskStateChange(createMaskState(canvas));
-    }
-  }, [historyIndex, onHistoryStateChange, onMaskStateChange, createMaskState]);
-
-  const stopDrawing = useCallback(() => {
-    if (isDrawing) {
-      setIsDrawing(false);
-      setPreviousDrawPoint(null); // Reset previous point
-
-      // Save to history immediately to reduce flicker
-      // Use requestAnimationFrame to ensure canvas operations are complete
-      requestAnimationFrame(() => {
-        saveToHistory();
-      });
-    }
-  }, [isDrawing, saveToHistory]);
-
-
+  const brushSettings = externalBrushSettings || defaultBrushSettings;
 
   const handleClearAll = useCallback(() => {
-    const canvas = maskCanvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Clear the mask canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Save the cleared state to history immediately
-    requestAnimationFrame(() => {
-      saveToHistory();
-    });
-
-    // Call the parent's clear all function to reset all processing results
+    if (maskCanvasRef.current?.clearAll) {
+      maskCanvasRef.current.clearAll();
+    }
     if (onClearAll) {
       onClearAll();
     }
-  }, [saveToHistory, onClearAll]);
+  }, [onClearAll]);
 
   const handleProcess = useCallback(() => {
-    if (!maskCanvasRef.current) return;
-    onProcessImage(maskCanvasRef.current);
+    if (maskCanvasRef.current?.getCanvas) {
+      const canvas = maskCanvasRef.current.getCanvas();
+      if (canvas) {
+        onProcessImage(canvas);
+      }
+    }
   }, [onProcessImage]);
 
   // Comparison handlers
   const handleCompareStart = () => {
-    const comparisonImageUrl = finalResult?.url
+    const comparisonImageUrl = finalResult?.url;
     if (comparisonImageUrl) {
       setShowComparison(true);
       setComparisonTargetProgress(1); // Target is full progress
@@ -499,12 +146,13 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
       // Calculate step size for smooth animation (same speed regardless of direction)
       const step = 0.025; // This gives us ~400ms for full sweep (1/0.025 = 40 frames at 60fps)
       const direction = targetProgress > currentProgress ? 1 : -1;
-      const newProgress = currentProgress + (step * direction);
+      const newProgress = currentProgress + step * direction;
 
       // Clamp to target if we would overshoot
-      const clampedProgress = direction > 0
-        ? Math.min(newProgress, targetProgress)
-        : Math.max(newProgress, targetProgress);
+      const clampedProgress =
+        direction > 0
+          ? Math.min(newProgress, targetProgress)
+          : Math.max(newProgress, targetProgress);
 
       setComparisonProgress(clampedProgress);
       requestAnimationFrame(animateProgress);
@@ -529,15 +177,18 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
   // Close background selector when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (backgroundSelectorRef.current && !backgroundSelectorRef.current.contains(event.target as Node)) {
+      if (
+        backgroundSelectorRef.current &&
+        !backgroundSelectorRef.current.contains(event.target as Node)
+      ) {
         setShowBackgroundSelector(false);
       }
     };
 
     if (showBackgroundSelector) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
       return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener("mousedown", handleClickOutside);
       };
     }
   }, [showBackgroundSelector]);
@@ -587,108 +238,19 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
     setIsPanning(false);
   }, []);
 
-
-
-  // Undo function - optimized to reduce flicker
+  // Undo function
   const undo = useCallback(() => {
-    if (historyIndex <= 0) return;
-
-    const canvas = maskCanvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const newIndex = historyIndex - 1;
-    const imageData = history[newIndex];
-
-    // Update index immediately
-    setHistoryIndex(newIndex);
-
-    // Optimized rendering with minimal canvas operations
-    if (imageData) {
-      const img = new Image();
-      img.onload = () => {
-        // Use a single requestAnimationFrame for all operations
-        requestAnimationFrame(() => {
-          // Clear and draw in one frame to minimize flicker
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-
-          // Notify parent about state changes
-          if (onMaskStateChange) {
-            onMaskStateChange(createMaskState(canvas));
-          }
-        });
-      };
-      img.src = imageData;
-    } else {
-      requestAnimationFrame(() => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (onMaskStateChange) {
-          onMaskStateChange(createMaskState(canvas));
-        }
-      });
+    if (maskCanvasRef.current?.undo) {
+      maskCanvasRef.current.undo();
     }
+  }, []);
 
-    // Notify parent about history change
-    if (onHistoryStateChange) {
-      onHistoryStateChange(history, newIndex);
-    }
-  }, [
-    historyIndex,
-    history,
-    onMaskStateChange,
-    onHistoryStateChange,
-    createMaskState,
-  ]);
-
-  // Redo function - optimized to reduce flicker
+  // Redo function
   const redo = useCallback(() => {
-    if (historyIndex >= history.length - 1) return;
-
-    const canvas = maskCanvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const newIndex = historyIndex + 1;
-    const imageData = history[newIndex];
-
-    // Update index immediately
-    setHistoryIndex(newIndex);
-
-    // Optimized rendering with minimal canvas operations
-    if (imageData) {
-      const img = new Image();
-      img.onload = () => {
-        // Use a single requestAnimationFrame for all operations
-        requestAnimationFrame(() => {
-          // Clear and draw in one frame to minimize flicker
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-
-          // Notify parent about state changes
-          if (onMaskStateChange) {
-            onMaskStateChange(createMaskState(canvas));
-          }
-        });
-      };
-      img.src = imageData;
+    if (maskCanvasRef.current?.redo) {
+      maskCanvasRef.current.redo();
     }
-
-    // Notify parent about history change
-    if (onHistoryStateChange) {
-      onHistoryStateChange(history, newIndex);
-    }
-  }, [
-    historyIndex,
-    history,
-    onMaskStateChange,
-    onHistoryStateChange,
-    createMaskState,
-  ]);
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -718,7 +280,9 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
             variant="outline"
             size="sm"
             onClick={undo}
-            disabled={disabled || isProcessing || historyIndex <= 0}
+            disabled={
+              disabled || isProcessing || !maskCanvasRef.current?.canUndo
+            }
             className="border-gray-300 text-gray-700 hover:opacity-90"
             title="Undo (Ctrl+Z)"
           >
@@ -729,7 +293,7 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
             size="sm"
             onClick={redo}
             disabled={
-              disabled || isProcessing || historyIndex >= history.length - 1
+              disabled || isProcessing || !maskCanvasRef.current?.canRedo
             }
             className="border-gray-300 text-gray-700 hover:opacity-90"
             title="Redo (Ctrl+Y)"
@@ -769,10 +333,10 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
               className="border-gray-300 text-gray-700 hover:bg-gray-500"
               title={`Hold to compare with original${
                 processedImageUrl && backgroundRemovedImageUrl
-                  ? ' (final result)'
+                  ? " (final result)"
                   : processedImageUrl
-                    ? ' (inpaint result)'
-                    : ' (background removed)'
+                  ? " (inpaint result)"
+                  : " (background removed)"
               }`}
             >
               <UnfoldHorizontal className="w-4 h-4 " />
@@ -782,7 +346,9 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
           <div className="relative">
             <Button
               onClick={onRemoveBackground}
-              disabled={disabled || isBackgroundProcessing || !onRemoveBackground}
+              disabled={
+                disabled || isBackgroundProcessing || !onRemoveBackground
+              }
               className="bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
             >
               <Scissors className="w-4 h-4 mr-2" />
@@ -791,11 +357,16 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
 
             {/* Background replacement dropdown */}
             {backgroundRemovedImageUrl && onReplaceBackground && (
-              <div ref={backgroundSelectorRef} className="relative inline-block ml-1">
+              <div
+                ref={backgroundSelectorRef}
+                className="relative inline-block ml-1"
+              >
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowBackgroundSelector(!showBackgroundSelector)}
+                  onClick={() =>
+                    setShowBackgroundSelector(!showBackgroundSelector)
+                  }
                   disabled={disabled || isBackgroundProcessing}
                   className="border-purple-300 text-purple-700 hover:bg-purple-50"
                   title="Replace background"
@@ -808,27 +379,29 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
                 {showBackgroundSelector && (
                   <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                     <div className="p-3">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">Choose Background</h4>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">
+                        Choose Background
+                      </h4>
                       <div className="grid grid-cols-4 gap-2">
                         {/* Predefined backgrounds */}
                         {[
-                          { name: 'White', color: '#ffffff' },
-                          { name: 'Black', color: '#000000' },
-                          { name: 'Blue', color: '#3b82f6' },
-                          { name: 'Green', color: '#10b981' },
-                          { name: 'Red', color: '#ef4444' },
-                          { name: 'Purple', color: '#8b5cf6' },
-                          { name: 'Yellow', color: '#f59e0b' },
-                          { name: 'Gray', color: '#6b7280' },
+                          { name: "White", color: "#ffffff" },
+                          { name: "Black", color: "#000000" },
+                          { name: "Blue", color: "#3b82f6" },
+                          { name: "Green", color: "#10b981" },
+                          { name: "Red", color: "#ef4444" },
+                          { name: "Purple", color: "#8b5cf6" },
+                          { name: "Yellow", color: "#f59e0b" },
+                          { name: "Gray", color: "#6b7280" },
                         ].map((bg) => (
                           <button
                             key={bg.name}
                             onClick={() => {
                               // Create a solid color background with image dimensions
-                              const canvas = document.createElement('canvas');
+                              const canvas = document.createElement("canvas");
                               canvas.width = imageData.width;
                               canvas.height = imageData.height;
-                              const ctx = canvas.getContext('2d');
+                              const ctx = canvas.getContext("2d");
                               if (ctx) {
                                 ctx.fillStyle = bg.color;
                                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -872,146 +445,97 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
           onMouseLeave={handlePanEnd}
           style={{ cursor: isPanning ? "grabbing" : "grab" }}
         >
-          <div
-            className="relative"
+          <div className="relative"
             style={{
-              width: canvasSize.width,
-              height: canvasSize.height,
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               transformOrigin: "center center",
               transition: isPanning ? "none" : "transform 0.1s ease-out",
             }}
           >
-            <canvas
-              ref={canvasRef}
-              className="absolute inset-0 rounded-lg shadow-lg"
-              style={{
-                width: canvasSize.width,
-                height: canvasSize.height,
-              }}
-            />
-            <canvas
-              ref={maskCanvasRef}
-              className="absolute inset-0 rounded-lg"
-              style={{
-                width: canvasSize.width,
-                height: canvasSize.height,
-                opacity: showComparison ? 0 : 0.6, // Hide mask during comparison
-                cursor: isPanning
-                  ? "grabbing"
-                  : createMagicWandCursor(
-                      brushSettingsRef.current.shape,
-                      Math.max(20, brushSettingsRef.current.size)
-                    ),
-                pointerEvents: isPanning ? "none" : "auto",
-                transition: "opacity 0.2s ease-in-out", // Smooth transition
-              }}
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
-              onTouchStart={startDrawing}
-              onTouchMove={draw}
-              onTouchEnd={stopDrawing}
+            <ImageCanvas
+              imageData={imageData}
+              finalResult={finalResult}
+              canvasSize={canvasSize}
+              showComparison={showComparison}
+              comparisonProgress={comparisonProgress}
+              onCanvasSizeChange={setCanvasSize}
             />
 
-            {/* Processing Overlay */}
-            {isProcessing && (
+            <MaskCanvas
+              key={imageData.id} // Force remount when switching images
+              ref={maskCanvasRef}
+              canvasSize={canvasSize}
+              brushSettings={brushSettings}
+              disabled={disabled}
+              isPanning={isPanning}
+              showComparison={showComparison}
+              initialMaskState={initialMaskState}
+              initialHistoryState={initialHistoryState}
+              onMaskStateChange={onMaskStateChange}
+              onHistoryStateChange={onHistoryStateChange}
+            />
+
+            {/* Processing Overlay - Outside transform container */}
+            {(isProcessing || isBackgroundProcessing) && (
               <div className="absolute inset-0 bg-black/30 backdrop-blur-sm rounded-lg flex items-center justify-center z-50">
                 <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-8 shadow-2xl text-center">
                   <div className="relative mb-6">
                     <div className="w-16 h-16 mx-auto">
-                      <Sparkles className="w-16 h-16 text-blue-500 animate-spin" />
+                      <Sparkles className={`w-16 h-16 animate-spin ${
+                        isBackgroundProcessing ? 'text-purple-500' : 'text-blue-500'
+                      }`} />
                     </div>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-8 h-8 bg-blue-500 rounded-full animate-pulse"></div>
+                      <div className={`w-8 h-8 rounded-full animate-pulse ${
+                        isBackgroundProcessing ? 'bg-purple-500' : 'bg-blue-500'
+                      }`}></div>
                     </div>
                   </div>
                   <h3 className="text-xl font-semibold text-gray-800 mb-2">
-                    Processing Image
+                    {isBackgroundProcessing ? 'Removing Background' : 'Processing Image'}
                   </h3>
                   <p className="text-gray-600 mb-4">
-                    AI is removing unwanted objects...
+                    {isBackgroundProcessing
+                      ? 'AI is removing the background from your image...'
+                      : 'AI is removing unwanted objects...'
+                    }
                   </p>
                   <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></div>
+                    <div className={`w-2 h-2 rounded-full animate-bounce ${
+                      isBackgroundProcessing ? 'bg-purple-500' : 'bg-blue-500'
+                    }`}></div>
+                    <div className={`w-2 h-2 rounded-full animate-bounce delay-100 ${
+                      isBackgroundProcessing ? 'bg-purple-500' : 'bg-blue-500'
+                    }`}></div>
+                    <div className={`w-2 h-2 rounded-full animate-bounce delay-200 ${
+                      isBackgroundProcessing ? 'bg-purple-500' : 'bg-blue-500'
+                    }`}></div>
                   </div>
                 </div>
               </div>
             )}
           </div>
         </div>
-
-        {/* Comparison Overlay */}
-        {showComparison && finalResult?.url && (
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-            <div
-              className="relative"
-              style={{
-                width: canvasSize.width,
-                height: canvasSize.height,
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                transformOrigin: "center center",
-              }}
-            >
-              {/* Processed image overlay with clip-path */}
-              <div
-                className="absolute inset-0"
-                style={{
-                  // clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,
-                  transition:
-                    comparisonProgress === 0
-                      ? "none"
-                      : "clip-path 0.1s ease-out",
-                }}
-              >
-                <img
-                  src={finalResult?.url!}
-                  className="w-full absolute inset-0 h-full object-contain rounded-lg"
-                  style={{
-                    clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,
-                  }}
-                />
-                <img
-                  src={imageData?.url!}
-                  className="w-full absolute inset-0 h-full object-contain rounded-lg"
-                  style={{
-                    clipPath: `inset(0 ${100 - comparisonProgress * 100}% 0 0)`,
-                  }}
-                />
-              </div>
-
-              {/* Sweep line */}
-              {comparisonProgress > 0 && comparisonProgress < 1 && (
-                <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg z-10"
-                  style={{
-                    left: `${comparisonProgress * 100}%`,
-                    transform: "translateX(-50%)",
-                  }}
-                />
-              )}
-            </div>
-
-            {/* Progress indicator */}
-            {/* <div className="absolute top-4 left-4 bg-black/70 text-white px-3 py-1 rounded-full text-sm font-medium z-20">
-              {Math.round(comparisonProgress * 100)}% Processed
-            </div> */}
-          </div>
-        )}
       </div>
     </div>
   );
 };
 // Custom comparison function to prevent re-renders when only brushSettings change
-const arePropsEqual = (prevProps: CanvasEditorProps, nextProps: CanvasEditorProps) => {
+const arePropsEqual = (
+  prevProps: CanvasEditorProps,
+  nextProps: CanvasEditorProps
+) => {
   // List of props to compare (excluding brushSettings)
   const propsToCompare: (keyof CanvasEditorProps)[] = [
-    'imageData', 'disabled', 'initialMaskState', 'initialHistoryState',
-    'isProcessing', 'processedImageUrl', 'isBackgroundProcessing',
-    'backgroundRemovedImageUrl', 'finalResult'
+    "imageData",
+    "disabled",
+    "initialMaskState",
+    "initialHistoryState",
+    "isProcessing",
+    "processedImageUrl",
+    "isBackgroundProcessing",
+    "backgroundRemovedImageUrl",
+    "finalResult",
   ];
 
   // Compare each prop individually

@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BrushControls } from "./BrushControls";
-import { Download, HelpCircle, Maximize2, X } from "lucide-react";
+import { Download, HelpCircle, Maximize2, X, Image } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { FireworksEffect } from "./FireworksEffect";
 
@@ -141,9 +141,9 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
               <div className="absolute inset-0 flex items-center justify-center">
                 {isProcessing || isBackgroundProcessing ? (
                   <div className="text-center">
-                    <div className="relative">
+                    <div className="relative mb-3">
                       <div
-                        className={`animate-spin rounded-full h-8 w-8 border-4 mx-auto mb-3 ${
+                        className={`animate-spin rounded-full h-12 w-12 border-4 mx-auto ${
                           isBackgroundProcessing
                             ? "border-purple-200 border-t-purple-600"
                             : "border-blue-200 border-t-blue-600"
@@ -151,7 +151,7 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
                       ></div>
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div
-                          className={`w-2 h-2 rounded-full animate-pulse ${
+                          className={`w-3 h-3 rounded-full animate-pulse ${
                             isBackgroundProcessing
                               ? "bg-purple-600"
                               : "bg-blue-600"
@@ -159,13 +159,13 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
                         ></div>
                       </div>
                     </div>
-                    <p className="text-xs font-medium text-gray-600">
+                    <p className="text-sm font-medium text-gray-700 mb-1">
                       {isBackgroundProcessing
-                        ? "Removing Background..."
-                        : "Processing..."}
+                        ? "Removing Background"
+                        : "Processing Image"}
                     </p>
                     <p className="text-xs text-gray-500">
-                      AI is working its magic ✨
+                      AI is working ✨
                     </p>
                   </div>
                 ) : getFinalResultUrl() ? (
@@ -188,7 +188,17 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
                       </div>
                     </div>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="text-center text-gray-400">
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
+                      <Image className="w-8 h-8" />
+                    </div>
+                    <p className="text-sm font-medium mb-1">No Result Yet</p>
+                    <p className="text-xs">
+                      Process your image to see results here
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Status badge */}

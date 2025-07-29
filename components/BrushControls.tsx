@@ -1,31 +1,45 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
-import { cursorShapes, type CursorShape } from './MagicCursor';
-import { Paintbrush, Palette, Circle, Square } from 'lucide-react';
+import React from "react";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
+import { cursorShapes, type CursorShape } from "./MagicCursor";
+import { Paintbrush, Palette, Circle, Square } from "lucide-react";
 
 interface BrushControlsProps {
   settings: {
     size: number;
     opacity: number;
     color: string;
-    shape: import('./MagicCursor').CursorShape;
+    shape: import("./MagicCursor").CursorShape;
   };
-  onSettingsChange: (settings: { size: number; opacity: number; color: string; shape: import('./MagicCursor').CursorShape }) => void;
+  onSettingsChange: (settings: {
+    size: number;
+    opacity: number;
+    color: string;
+    shape: import("./MagicCursor").CursorShape;
+  }) => void;
   disabled?: boolean;
 }
 
 export const BrushControls: React.FC<BrushControlsProps> = ({
   settings,
   onSettingsChange,
-  disabled = false
+  disabled = false,
 }) => {
   const presetColors = [
-    '#ff3333', '#ff6b35', '#f7931e', '#ffcd3c',
-    '#c5e063', '#6bcf7f', '#4ecdc4', '#45b7d1',
-    '#96ceb4', '#ffeaa7', '#fab1a0', '#fd79a8'
+    "#ff3333",
+    "#ff6b35",
+    "#f7931e",
+    "#ffcd3c",
+    "#c5e063",
+    "#6bcf7f",
+    "#4ecdc4",
+    "#45b7d1",
+    "#96ceb4",
+    "#ffeaa7",
+    "#fab1a0",
+    "#fd79a8",
   ];
 
   return (
@@ -61,7 +75,7 @@ export const BrushControls: React.FC<BrushControlsProps> = ({
       </div>
 
       {/* Brush Opacity */}
-      <div className="space-y-3">
+      {/* <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
             <Square className="w-4 h-4 text-purple-500" />
@@ -88,7 +102,7 @@ export const BrushControls: React.FC<BrushControlsProps> = ({
             <span>100%</span>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Brush Color */}
       <div className="space-y-3">
@@ -111,8 +125,8 @@ export const BrushControls: React.FC<BrushControlsProps> = ({
               disabled={disabled}
               className={`w-8 h-8 rounded-lg border-2 transition-all hover:scale-110 ${
                 settings.color === color
-                  ? 'border-gray-800 ring-2 ring-blue-200'
-                  : 'border-gray-200 hover:border-gray-300'
+                  ? "border-gray-800 ring-2 ring-blue-200"
+                  : "border-gray-200 hover:border-gray-300"
               }`}
               style={{ backgroundColor: color }}
             />
@@ -138,50 +152,25 @@ export const BrushControls: React.FC<BrushControlsProps> = ({
         </div>
       </div>
 
-      {/* Cursor Shape */}
-      <div className="space-y-3">
-        <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-          <Paintbrush className="w-4 h-4 text-green-500" />
-          Cursor Style
-        </Label>
-
-        <div className="grid grid-cols-2 gap-2">
-          {Object.entries(cursorShapes).map(([key, config]) => (
-            <button
-              key={key}
-              onClick={() => onSettingsChange({ ...settings, shape: key as CursorShape })}
-              disabled={disabled}
-              className={`p-3 rounded-lg border-2 transition-all hover:scale-105 ${
-                settings.shape === key
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:border-gray-300 bg-white'
-              }`}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-lg">{config.icon}</span>
-                <span className="text-xs font-medium">{config.name}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Brush Preview */}
       <div className="space-y-3">
-        <Label className="text-sm font-medium text-gray-700">Live Preview</Label>
+        <Label className="text-sm font-medium text-gray-700">
+          Live Preview
+        </Label>
         <div className="relative h-20 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border border-gray-200 overflow-hidden">
           {/* Grid pattern background */}
-          <div className="absolute inset-0 opacity-30"
-               style={{
-                 backgroundImage: `
+          <div
+            className="absolute inset-0 opacity-30"
+            style={{
+              backgroundImage: `
                    linear-gradient(45deg, #f0f0f0 25%, transparent 25%),
                    linear-gradient(-45deg, #f0f0f0 25%, transparent 25%),
                    linear-gradient(45deg, transparent 75%, #f0f0f0 75%),
                    linear-gradient(-45deg, transparent 75%, #f0f0f0 75%)
                  `,
-                 backgroundSize: '8px 8px',
-                 backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px'
-               }}
+              backgroundSize: "8px 8px",
+              backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0px",
+            }}
           />
 
           {/* Brush preview */}
@@ -193,8 +182,8 @@ export const BrushControls: React.FC<BrushControlsProps> = ({
                 height: `${Math.min(settings.size, 60)}px`,
                 backgroundColor: settings.color,
                 opacity: settings.opacity / 100,
-                transform: 'scale(1)',
-                animation: 'pulse 2s infinite'
+                transform: "scale(1)",
+                animation: "pulse 2s infinite",
               }}
             />
           </div>
@@ -205,6 +194,36 @@ export const BrushControls: React.FC<BrushControlsProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Cursor Shape */}
+      {/* <div className="space-y-3">
+        <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+          <Paintbrush className="w-4 h-4 text-green-500" />
+          Cursor Style
+        </Label>
+
+        <div className="grid grid-cols-2 gap-2">
+          {Object.entries(cursorShapes).map(([key, config]) => (
+            <button
+              key={key}
+              onClick={() =>
+                onSettingsChange({ ...settings, shape: key as CursorShape })
+              }
+              disabled={disabled}
+              className={`p-3 rounded-lg border-2 transition-all hover:scale-105 ${
+                settings.shape === key
+                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  : "border-gray-200 hover:border-gray-300 bg-white"
+              }`}
+            >
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-lg">{config.icon}</span>
+                <span className="text-xs font-medium">{config.name}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div> */}
     </div>
   );
 };

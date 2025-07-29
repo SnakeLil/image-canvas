@@ -99,6 +99,24 @@ const createCircleSVG = (size: number): string => `
   </svg>
 `;
 
+// 创建动态圆形SVG（支持颜色和透明度）
+const createDynamicCircleSVG = (size: number, color: string, opacity: number): string => {
+  const radius = size / 2 - 1; // 留出边框空间
+  const centerX = size / 2;
+  const centerY = size / 2;
+
+  return `
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="rgba(0,0,0,0.3)"/>
+        </filter>
+      </defs>
+      <circle cx="${centerX}" cy="${centerY}" r="${radius + 1}" fill="${color}" opacity="${0.6}"/>
+    </svg>
+  `;
+};
+
 // 创建爱心SVG
 const createBrushSVG = (size: number): string => `
   <svg width="${size}" height="${size}" fill="#000000" viewBox="0 0 24 24" id="paint-brush-2" data-name="Flat Color" xmlns="http://www.w3.org/2000/svg" class="icon flat-color"><path id="primary" d="M7.91,11.45a1,1,0,0,1,.7-.71A3.24,3.24,0,0,0,10,9.9a3,3,0,0,0,.74-1.27,1,1,0,0,1,.71-.7,1,1,0,0,1,1,.26l8.68,8.69a3,3,0,1,1-4.23,4.24L8.17,12.41A1,1,0,0,1,7.91,11.45Z" style="fill: rgb(0, 0, 0);"></path><path id="secondary" d="M2.37,3.68a6.42,6.42,0,0,1,9.12.48,4.94,4.94,0,0,1,1.4,3.58,5.12,5.12,0,0,1-1.45,3.57,5.23,5.23,0,0,1-3.25,1.55H7.83a4,4,0,0,1-2.9-1.18A6.4,6.4,0,0,1,3.39,8.26,8.5,8.5,0,0,0,2.18,5,1,1,0,0,1,2.37,3.68Z" style="fill: rgb(44, 169, 188);"></path></svg>
@@ -130,6 +148,19 @@ export const createMagicWandCursor = (
     default:
       svg = createMagicWandSVG(size);
   }
+
+  // 编码SVG并返回CSS光标字符串
+  const encoded = encodeURIComponent(svg);
+  return `url("data:image/svg+xml,${encoded}") ${size / 2} ${size / 2}, auto`;
+};
+
+// 工具函数：创建动态圆形光标（支持颜色和透明度）
+export const createDynamicCircleCursor = (
+  size: number = 24,
+  color: string = "#ff3333",
+  opacity: number = 100
+): string => {
+  const svg = createDynamicCircleSVG(size, color, opacity);
 
   // 编码SVG并返回CSS光标字符串
   const encoded = encodeURIComponent(svg);
