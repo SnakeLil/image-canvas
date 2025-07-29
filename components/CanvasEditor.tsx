@@ -59,7 +59,7 @@ interface BrushSettings {
   shape: import("./MagicCursor").CursorShape;
 }
 
-export const CanvasEditor: React.FC<CanvasEditorProps> = ({
+const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
   imageData,
   onProcessImage,
   disabled = false,
@@ -97,8 +97,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const [showBackgroundSelector, setShowBackgroundSelector] = useState(false);
   const backgroundSelectorRef = useRef<HTMLDivElement>(null);
 
-  // Use external brush settings if provided, otherwise use internal
-  const brushSettings = externalBrushSettings || internalBrushSettings;
+  console.log('canvas editor 重渲染')
+
+  // Use ref to store brush settings to avoid re-renders
+  const brushSettingsRef = useRef<BrushSettings>(
+    externalBrushSettings || internalBrushSettings
+  );
+
+  // Update ref when external settings change, but don't trigger re-render
+  useEffect(() => {
+    brushSettingsRef.current = externalBrushSettings || internalBrushSettings;
+  }, [externalBrushSettings, internalBrushSettings]);
 
   // Helper function to create mask state
   const createMaskState = useCallback(
@@ -112,19 +121,20 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     []
   );
 
-  // Helper function to draw a line between two points
+  // Helper function to draw a line between two points - optimized to avoid re-renders
   const drawLine = useCallback(
     (
       ctx: CanvasRenderingContext2D,
       from: { x: number; y: number },
       to: { x: number; y: number }
     ) => {
+      const currentBrushSize = brushSettingsRef.current.size;
       const distance = Math.sqrt(
         Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2)
       );
       const steps = Math.max(
         1,
-        Math.floor(distance / (brushSettings.size / 4))
+        Math.floor(distance / (currentBrushSize / 4))
       ); // More steps for smoother lines
 
       for (let i = 0; i <= steps; i++) {
@@ -133,11 +143,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         const y = from.y + (to.y - from.y) * t;
 
         ctx.beginPath();
-        ctx.arc(x, y, brushSettings.size / 2, 0, Math.PI * 2);
+        ctx.arc(x, y, currentBrushSize / 2, 0, Math.PI * 2);
         ctx.fill();
       }
     },
-    [brushSettings.size]
+    [] // No dependencies - stable function
   );
 
   const [zoom, setZoom] = useState(1);
@@ -153,6 +163,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     x: number;
     y: number;
   } | null>(null);
+  // Simplified history system - back to dataURL but with optimizations
   const [history, setHistory] = useState<string[]>(
     initialHistoryState?.history || []
   );
@@ -172,7 +183,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     }
   }, [initialHistoryState]);
 
-  // Restore mask state when switching images
+  // Restore mask state when switching images - optimized to reduce flicker
   useEffect(() => {
     const canvas = maskCanvasRef.current;
     if (!canvas || !canvasSize.width || !canvasSize.height) return;
@@ -180,33 +191,39 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Clear current mask
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Use requestAnimationFrame to batch canvas operations
+    requestAnimationFrame(() => {
+      // Clear current mask
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Restore mask state if available
-    if (initialMaskState) {
-      const img = new Image();
-      img.onload = () => {
-        // Scale the mask to fit current canvas size
-        const scaleX = canvasSize.width / initialMaskState.width;
-        const scaleY = canvasSize.height / initialMaskState.height;
+      // Restore mask state if available
+      if (initialMaskState) {
+        const img = new Image();
+        img.onload = () => {
+          // Scale the mask to fit current canvas size
+          const scaleX = canvasSize.width / initialMaskState.width;
+          const scaleY = canvasSize.height / initialMaskState.height;
 
-        // If the aspect ratios match, scale uniformly
-        if (Math.abs(scaleX - scaleY) < 0.01) {
-          ctx.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
-        } else {
-          // If aspect ratios don't match, this might be from a different image
-          // Only restore if dimensions match exactly to avoid confusion
-          if (
-            initialMaskState.width === canvasSize.width &&
-            initialMaskState.height === canvasSize.height
-          ) {
-            ctx.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
-          }
-        }
-      };
-      img.src = initialMaskState.dataURL;
-    }
+          // Use another requestAnimationFrame to ensure smooth rendering
+          requestAnimationFrame(() => {
+            // If the aspect ratios match, scale uniformly
+            if (Math.abs(scaleX - scaleY) < 0.01) {
+              ctx.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
+            } else {
+              // If aspect ratios don't match, this might be from a different image
+              // Only restore if dimensions match exactly to avoid confusion
+              if (
+                initialMaskState.width === canvasSize.width &&
+                initialMaskState.height === canvasSize.height
+              ) {
+                ctx.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
+              }
+            }
+          });
+        };
+        img.src = initialMaskState.dataURL;
+      }
+    });
   }, [initialMaskState, canvasSize]);
 
   // Save initial blank state for new images (when no history exists)
@@ -241,7 +258,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const MAX_CANVAS_WIDTH = 800;
   const MAX_CANVAS_HEIGHT = 600;
 
-  // Initialize canvas
+  // Initialize canvas - optimized to reduce flicker
   useEffect(() => {
     if (!imageData || !canvasRef.current || !maskCanvasRef.current) return;
 
@@ -262,23 +279,29 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       newWidth = newHeight * aspectRatio;
     }
 
-    setCanvasSize({ width: newWidth, height: newHeight });
+    // Batch all canvas operations in a single frame
+    requestAnimationFrame(() => {
+      setCanvasSize({ width: newWidth, height: newHeight });
 
-    // Set canvas dimensions
-    canvas.width = newWidth;
-    canvas.height = newHeight;
-    maskCanvas.width = newWidth;
-    maskCanvas.height = newHeight;
+      // Set canvas dimensions
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+      maskCanvas.width = newWidth;
+      maskCanvas.height = newHeight;
 
-    // Draw image (use background removed version if available, otherwise original)
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, newWidth, newHeight);
-    };
-    img.src = finalResult?.url || imageData.url;
+      // Clear mask first (restoration is handled by separate useEffect)
+      maskCtx.clearRect(0, 0, newWidth, newHeight);
 
-    // Clear mask (restoration is handled by separate useEffect)
-    maskCtx.clearRect(0, 0, newWidth, newHeight);
+      // Draw image (use background removed version if available, otherwise original)
+      const img = new Image();
+      img.onload = () => {
+        // Use another requestAnimationFrame to ensure smooth rendering
+        requestAnimationFrame(() => {
+          ctx.drawImage(img, 0, 0, newWidth, newHeight);
+        });
+      };
+      img.src = finalResult?.url || imageData.url;
+    });
   }, [imageData, backgroundRemovedImageUrl, finalResult]);
 
   const startDrawing = useCallback(
@@ -326,9 +349,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
+      // Get current brush settings from ref to avoid re-renders
+      const currentBrush = brushSettingsRef.current;
+
       ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = brushSettings.color;
-      ctx.globalAlpha = brushSettings.opacity / 100;
+      ctx.fillStyle = currentBrush.color;
+      ctx.globalAlpha = currentBrush.opacity / 100;
 
       // If this is the first draw after starting, draw the starting point too
       if (lastDrawPoint) {
@@ -336,7 +362,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         ctx.arc(
           lastDrawPoint.x,
           lastDrawPoint.y,
-          brushSettings.size / 2,
+          currentBrush.size / 2,
           0,
           Math.PI * 2
         );
@@ -350,7 +376,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       } else {
         // Draw current point if no previous point
         ctx.beginPath();
-        ctx.arc(x, y, brushSettings.size / 2, 0, Math.PI * 2);
+        ctx.arc(x, y, currentBrush.size / 2, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -363,7 +389,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       isPanning,
       isProcessing,
       zoom,
-      brushSettings,
       canvasSize,
       lastDrawPoint,
       previousDrawPoint,
@@ -371,20 +396,20 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     ]
   );
 
-  // Save current state to history
+  // Save current state to history - optimized to reduce flicker
   const saveToHistory = useCallback(() => {
     const canvas = maskCanvasRef.current;
     if (!canvas) return;
 
     const dataURL = canvas.toDataURL();
-    const newIndex = Math.min(historyIndex + 1, 19);
 
     setHistory((prev) => {
       const newHistory = prev.slice(0, historyIndex + 1);
       newHistory.push(dataURL);
-      const finalHistory = newHistory.slice(-20); // Keep only last 20 states
+      const finalHistory = newHistory.slice(-20);
 
-      // Notify parent component about history change
+      // Notify parent immediately with the new history
+      const newIndex = finalHistory.length - 1;
       if (onHistoryStateChange) {
         onHistoryStateChange(finalHistory, newIndex);
       }
@@ -392,9 +417,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       return finalHistory;
     });
 
-    setHistoryIndex(newIndex);
+    setHistoryIndex((prev) => prev + 1);
 
-    // Also notify about mask state change
+    // Notify about mask state change
     if (onMaskStateChange) {
       onMaskStateChange(createMaskState(canvas));
     }
@@ -404,32 +429,37 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (isDrawing) {
       setIsDrawing(false);
       setPreviousDrawPoint(null); // Reset previous point
-      // Save to history after drawing
-      setTimeout(() => saveToHistory(), 0);
+
+      // Save to history immediately to reduce flicker
+      // Use requestAnimationFrame to ensure canvas operations are complete
+      requestAnimationFrame(() => {
+        saveToHistory();
+      });
     }
   }, [isDrawing, saveToHistory]);
 
-  const clearMask = useCallback(() => {
+
+
+  const handleClearAll = useCallback(() => {
     const canvas = maskCanvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Save to history after clearing
-    setTimeout(() => saveToHistory(), 0);
-  }, [saveToHistory]);
-
-  const handleClearAll = useCallback(() => {
     // Clear the mask canvas
-    clearMask();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Save the cleared state to history immediately
+    requestAnimationFrame(() => {
+      saveToHistory();
+    });
 
     // Call the parent's clear all function to reset all processing results
     if (onClearAll) {
       onClearAll();
     }
-  }, [clearMask, onClearAll]);
+  }, [saveToHistory, onClearAll]);
 
   const handleProcess = useCallback(() => {
     if (!maskCanvasRef.current) return;
@@ -557,7 +587,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     setIsPanning(false);
   }, []);
 
-  // Undo function
+
+
+  // Undo function - optimized to reduce flicker
   const undo = useCallback(() => {
     if (historyIndex <= 0) return;
 
@@ -570,26 +602,34 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const newIndex = historyIndex - 1;
     const imageData = history[newIndex];
 
+    // Update index immediately
+    setHistoryIndex(newIndex);
+
+    // Optimized rendering with minimal canvas operations
     if (imageData) {
       const img = new Image();
       img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
+        // Use a single requestAnimationFrame for all operations
+        requestAnimationFrame(() => {
+          // Clear and draw in one frame to minimize flicker
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
 
-        // Notify parent about state changes
-        if (onMaskStateChange) {
-          onMaskStateChange(createMaskState(canvas));
-        }
+          // Notify parent about state changes
+          if (onMaskStateChange) {
+            onMaskStateChange(createMaskState(canvas));
+          }
+        });
       };
       img.src = imageData;
     } else {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (onMaskStateChange) {
-        onMaskStateChange(createMaskState(canvas));
-      }
+      requestAnimationFrame(() => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (onMaskStateChange) {
+          onMaskStateChange(createMaskState(canvas));
+        }
+      });
     }
-
-    setHistoryIndex(newIndex);
 
     // Notify parent about history change
     if (onHistoryStateChange) {
@@ -603,7 +643,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     createMaskState,
   ]);
 
-  // Redo function
+  // Redo function - optimized to reduce flicker
   const redo = useCallback(() => {
     if (historyIndex >= history.length - 1) return;
 
@@ -616,19 +656,27 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const newIndex = historyIndex + 1;
     const imageData = history[newIndex];
 
-    const img = new Image();
-    img.onload = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
-
-      // Notify parent about state changes
-      if (onMaskStateChange) {
-        onMaskStateChange(createMaskState(canvas));
-      }
-    };
-    img.src = imageData;
-
+    // Update index immediately
     setHistoryIndex(newIndex);
+
+    // Optimized rendering with minimal canvas operations
+    if (imageData) {
+      const img = new Image();
+      img.onload = () => {
+        // Use a single requestAnimationFrame for all operations
+        requestAnimationFrame(() => {
+          // Clear and draw in one frame to minimize flicker
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+
+          // Notify parent about state changes
+          if (onMaskStateChange) {
+            onMaskStateChange(createMaskState(canvas));
+          }
+        });
+      };
+      img.src = imageData;
+    }
 
     // Notify parent about history change
     if (onHistoryStateChange) {
@@ -852,8 +900,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 cursor: isPanning
                   ? "grabbing"
                   : createMagicWandCursor(
-                      brushSettings.shape,
-                      Math.max(20, brushSettings.size)
+                      brushSettingsRef.current.shape,
+                      Math.max(20, brushSettingsRef.current.size)
                     ),
                 pointerEvents: isPanning ? "none" : "auto",
                 transition: "opacity 0.2s ease-in-out", // Smooth transition
@@ -957,3 +1005,24 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     </div>
   );
 };
+// Custom comparison function to prevent re-renders when only brushSettings change
+const arePropsEqual = (prevProps: CanvasEditorProps, nextProps: CanvasEditorProps) => {
+  // List of props to compare (excluding brushSettings)
+  const propsToCompare: (keyof CanvasEditorProps)[] = [
+    'imageData', 'disabled', 'initialMaskState', 'initialHistoryState',
+    'isProcessing', 'processedImageUrl', 'isBackgroundProcessing',
+    'backgroundRemovedImageUrl', 'finalResult'
+  ];
+
+  // Compare each prop individually
+  for (const prop of propsToCompare) {
+    if (prevProps[prop] !== nextProps[prop]) {
+      return false;
+    }
+  }
+
+  // Ignore brushSettings changes - component will get latest via useRef
+  return true;
+};
+
+export const CanvasEditor = React.memo(CanvasEditorComponent, arePropsEqual);

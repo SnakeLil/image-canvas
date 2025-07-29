@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { ImageUpload } from "./ImageUpload";
 import { CanvasEditor } from "./CanvasEditor";
 import type { MaskState } from "./CanvasEditor";
@@ -72,6 +72,19 @@ export const ImageEditor: React.FC = () => {
     color: "#ff3333",
     shape: "magic-wand" as import("./MagicCursor").CursorShape,
   });
+
+  // Memoize brushSettings to prevent unnecessary re-renders
+  const memoizedBrushSettings = useMemo(() => ({
+    size: brushSettings.size,
+    opacity: brushSettings.opacity,
+    color: brushSettings.color,
+    shape: brushSettings.shape,
+  }), [
+    brushSettings.size,
+    brushSettings.opacity,
+    brushSettings.color,
+    brushSettings.shape,
+  ]);
 
   // Global drag and drop state
   const [isGlobalDragOver, setIsGlobalDragOver] = useState(false);
@@ -185,11 +198,6 @@ export const ImageEditor: React.FC = () => {
     project.backgroundRemovedTimestamps,
   ]);
 
-  // Show API config modal on first load if no API is configured
-  const [hasShownInitialConfig, setHasShownInitialConfig] = useState(false);
-
-  // Check if API is configured (IOPaint doesn't need API key, just check baseUrl)
-  const isAPIConfigured = !!apiConfig.baseUrl;
 
   // Instructions state
   const {
@@ -198,14 +206,7 @@ export const ImageEditor: React.FC = () => {
     showInstructionsAgain,
     showInstructionsIfFirstTime,
   } = useInstructions();
-
-  // Show config modal on first load if not configured
-  React.useEffect(() => {
-    if (!hasShownInitialConfig && !isAPIConfigured) {
-      setShowAPIConfig(true);
-      setHasShownInitialConfig(true);
-    }
-  }, [hasShownInitialConfig, isAPIConfigured]);
+  const finalUrl = getCurrentFinalResult()?.url
 
   const handleImageUpload = useCallback(
     (file: File) => {
@@ -474,8 +475,11 @@ export const ImageEditor: React.FC = () => {
         // Use background removed image if available, otherwise use original
         const currentBackgroundRemovedUrl = getCurrentBackgroundRemovedUrl();
         let imageBase64: string;
-
-        if (currentBackgroundRemovedUrl) {
+        if (finalUrl) {
+          const response = await fetch(finalUrl);
+          const blob = await response.blob();
+          imageBase64 = await convertToBase64(blob);
+        } else if (currentBackgroundRemovedUrl) {
           // Convert background removed image URL to base64
           const response = await fetch(currentBackgroundRemovedUrl);
           const blob = await response.blob();
@@ -577,6 +581,7 @@ export const ImageEditor: React.FC = () => {
       apiConfig,
       setImageProcessingState,
       getCurrentBackgroundRemovedUrl,
+      finalUrl,
     ]
   );
 
@@ -598,7 +603,7 @@ export const ImageEditor: React.FC = () => {
 
       // Load the image (use processed result if available, otherwise use original)
       const currentProcessedUrl = getCurrentProcessedUrl();
-      const imageUrl = currentProcessedUrl || currentImage.url;
+      const imageUrl = finalUrl || currentProcessedUrl || currentImage.url;
 
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -642,33 +647,6 @@ export const ImageEditor: React.FC = () => {
           [currentImage.id]: timestamp,
         },
       }));
-
-      // Add a history entry for background removal operation
-      // This allows users to undo back to the state before background removal
-
-      // const currentHistoryState = getCurrentHistoryState();
-      // if (currentHistoryState) {
-      //   const newHistory = [...currentHistoryState.history];
-      //   const newIndex = currentHistoryState.historyIndex + 1;
-
-      //   // Add a marker entry to indicate background removal operation
-      //   // We'll use an empty canvas as the mask state since background removal doesn't use masks
-      //   const emptyCanvas = document.createElement('canvas');
-      //   emptyCanvas.width = canvas.width;
-      //   emptyCanvas.height = canvas.height;
-      //   const emptyMaskDataURL = emptyCanvas.toDataURL();
-
-      //   newHistory.splice(newIndex, newHistory.length - newIndex, emptyMaskDataURL);
-
-      //   // Update history state directly
-      //   setProject(prev => ({
-      //     ...prev,
-      //     historyStates: {
-      //       ...prev.historyStates,
-      //       [currentImage.id]: { history: newHistory, historyIndex: newIndex }
-      //     }
-      //   }));
-      // }
     } catch (err) {
       setError(
         err instanceof Error
@@ -685,6 +663,7 @@ export const ImageEditor: React.FC = () => {
     setImageBackgroundProcessingState,
     getCurrentHistoryState,
     getCurrentProcessedUrl,
+    finalUrl
   ]);
 
   const handleReplaceBackground = useCallback(
@@ -750,31 +729,6 @@ export const ImageEditor: React.FC = () => {
             [currentImage.id]: resultImageUrl,
           },
         }));
-
-        // Add a history entry for background replacement operation
-
-        // const currentHistoryState = getCurrentHistoryState();
-        // if (currentHistoryState) {
-        //   const newHistory = [...currentHistoryState.history];
-        //   const newIndex = currentHistoryState.historyIndex + 1;
-
-        //   // Add a marker entry to indicate background replacement operation
-        //   const emptyCanvas = document.createElement('canvas');
-        //   emptyCanvas.width = currentImage.width;
-        //   emptyCanvas.height = currentImage.height;
-        //   const emptyMaskDataURL = emptyCanvas.toDataURL();
-
-        //   newHistory.splice(newIndex, newHistory.length - newIndex, emptyMaskDataURL);
-
-        //   // Update history state directly
-        //   setProject(prev => ({
-        //     ...prev,
-        //     historyStates: {
-        //       ...prev.historyStates,
-        //       [currentImage.id]: { history: newHistory, historyIndex: newIndex }
-        //     }
-        //   }));
-        // }
       } catch (err) {
         setError(
           err instanceof Error
@@ -815,8 +769,8 @@ export const ImageEditor: React.FC = () => {
       delete newProcessedTimestamps[currentImage.id];
       delete newBackgroundRemovedTimestamps[currentImage.id];
 
-      // Reset history to initial state (empty mask)
-      newHistoryStates[currentImage.id] = { history: [], historyIndex: -1 };
+      // Don't reset history - let CanvasEditor handle history management
+      // The history will be updated by CanvasEditor's handleClearAll
 
       return {
         ...prev,
@@ -978,9 +932,8 @@ export const ImageEditor: React.FC = () => {
 
           {/* Main Content Area */}
           <div className="flex flex-1 overflow-hidden">
-            {/* Left Side - Canvas Area */}
             <div className="flex-1 flex flex-col bg-white">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              {/* <div className="flex items-center justify-between p-4 border-b border-gray-200">
                 <h2 className="text-lg font-medium text-gray-800">
                   Edit Your Image
                 </h2>
@@ -1002,31 +955,10 @@ export const ImageEditor: React.FC = () => {
                     Upload New Image
                   </Button>
                 </div>
-              </div>
+              </div> */}
 
               {/* Canvas Content Area */}
               <div className="flex-1 p-4">
-                {/* API Configuration Status */}
-                {!isAPIConfigured && (
-                  <Card className="mb-4 p-4 bg-amber-50 border-amber-200 shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <Settings className="w-4 h-4 text-amber-600" />
-                      <p className="text-amber-700">
-                        Please configure an AI provider to use the magic eraser
-                        feature.
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowAPIConfig(true)}
-                        className="ml-auto border-amber-300 text-amber-700 hover:bg-amber-100"
-                      >
-                        Configure Now
-                      </Button>
-                    </div>
-                  </Card>
-                )}
-
                 {error && (
                   <Card className="mb-4 p-4 bg-red-50 border-red-200 shadow-sm">
                     <p className="text-red-700">{error}</p>
@@ -1041,7 +973,7 @@ export const ImageEditor: React.FC = () => {
                     getCurrentProcessingState() ||
                     getCurrentBackgroundProcessingState()
                   }
-                  brushSettings={brushSettings}
+                  brushSettings={memoizedBrushSettings}
                   onBrushSettingsChange={setBrushSettings}
                   initialMaskState={getCurrentMaskState()}
                   onMaskStateChange={handleMaskStateChange}
@@ -1064,7 +996,7 @@ export const ImageEditor: React.FC = () => {
 
             {/* Right Side - Tool Panel */}
             <ToolPanel
-              brushSettings={brushSettings}
+              brushSettings={memoizedBrushSettings}
               onBrushSettingsChange={setBrushSettings}
               processedImageUrl={currentProcessedUrl}
               backgroundRemovedImageUrl={getCurrentBackgroundRemovedUrl()}
