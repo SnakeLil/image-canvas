@@ -23,12 +23,14 @@ interface ToolPanelProps {
   }) => void;
   processedImageUrl?: string | null;
   backgroundRemovedImageUrl?: string | null;
+  backgroundBlurredImageUrl?: string | null;
   finalResult?: {
     url: string | null;
-    type: "inpaint" | "background" | "final" | "none";
+    type: "inpaint" | "background" | "blur" | "final" | "none";
   };
   isProcessing?: boolean;
   isBackgroundProcessing?: boolean;
+  isBackgroundBlurProcessing?: boolean;
   disabled?: boolean;
   onShowHelp?: () => void;
 }
@@ -38,9 +40,11 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
   onBrushSettingsChange,
   processedImageUrl,
   backgroundRemovedImageUrl,
+  backgroundBlurredImageUrl,
   finalResult,
   isProcessing = false,
   isBackgroundProcessing = false,
+  isBackgroundBlurProcessing = false,
   disabled = false,
   onShowHelp,
 }) => {
@@ -106,8 +110,10 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
         {/* Result Preview */}
         {(processedImageUrl ||
           backgroundRemovedImageUrl ||
+          backgroundBlurredImageUrl ||
           isProcessing ||
-          isBackgroundProcessing) && (
+          isBackgroundProcessing ||
+          isBackgroundBlurProcessing) && (
           <Card className="p-4 bg-white border border-gray-200 shadow-sm">
             <h4 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -139,13 +145,15 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
               />
 
               <div className="absolute inset-0 flex items-center justify-center">
-                {isProcessing || isBackgroundProcessing ? (
+                {isProcessing || isBackgroundProcessing || isBackgroundBlurProcessing ? (
                   <div className="text-center">
                     <div className="relative mb-3">
                       <div
                         className={`animate-spin rounded-full h-12 w-12 border-4 mx-auto ${
                           isBackgroundProcessing
                             ? "border-purple-200 border-t-purple-600"
+                            : isBackgroundBlurProcessing
+                            ? "border-orange-200 border-t-orange-600"
                             : "border-blue-200 border-t-blue-600"
                         }`}
                       ></div>
@@ -154,6 +162,8 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
                           className={`w-3 h-3 rounded-full animate-pulse ${
                             isBackgroundProcessing
                               ? "bg-purple-600"
+                              : isBackgroundBlurProcessing
+                              ? "bg-orange-600"
                               : "bg-blue-600"
                           }`}
                         ></div>
@@ -162,6 +172,8 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
                     <p className="text-sm font-medium text-gray-700 mb-1">
                       {isBackgroundProcessing
                         ? "Removing Background"
+                        : isBackgroundBlurProcessing
+                        ? "Blurring Background"
                         : "Processing Image"}
                     </p>
                     <p className="text-xs text-gray-500">
@@ -177,6 +189,8 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
                           ? "Final Result"
                           : getFinalResultType() === "inpaint"
                           ? "Processed"
+                          : getFinalResultType() === "blur"
+                          ? "Background Blurred"
                           : "Background Removed"
                       }
                       className="max-w-full max-h-full object-contain rounded-lg shadow-sm"
@@ -310,6 +324,8 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
                     ? "Final Result Preview"
                     : getFinalResultType() === "inpaint"
                     ? "Processed Image Preview"
+                    : getFinalResultType() === "blur"
+                    ? "Background Blurred Preview"
                     : "Background Removed Preview"
                 }
                 className="max-w-full max-h-full object-contain rounded-lg"

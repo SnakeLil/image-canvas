@@ -5,6 +5,7 @@ import { ZoomControls } from "./ZoomControls";
 import { ImageCanvas } from "./ImageCanvas";
 import { MaskCanvas, type MaskState, type BrushSettings } from "./MaskCanvas";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import {
   Undo,
   Redo,
@@ -15,6 +16,7 @@ import {
   Scissors,
   Palette,
   ChevronDown,
+  Focus,
 } from "lucide-react";
 import type { ImageData } from "./ImageEditor";
 
@@ -46,8 +48,12 @@ interface CanvasEditorProps {
   onClearAll?: () => void;
   finalResult?: {
     url: string | null;
-    type: "inpaint" | "background" | "final" | "none";
+    type: "inpaint" | "background" | "blur" | "final" | "none";
   };
+  // Background blur feature
+  onBlurBackground?: (blurIntensity: number) => void;
+  isBackgroundBlurProcessing?: boolean;
+  backgroundBlurredImageUrl?: string | null;
 }
 
 const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
@@ -67,6 +73,9 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
   isBackgroundProcessing = false,
   backgroundRemovedImageUrl,
   onReplaceBackground,
+  onBlurBackground,
+  isBackgroundBlurProcessing = false,
+  backgroundBlurredImageUrl,
   onClearAll,
   finalResult,
 }) => {
@@ -78,6 +87,10 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
   const [comparisonTargetProgress, setComparisonTargetProgress] = useState(0);
   const [showBackgroundSelector, setShowBackgroundSelector] = useState(false);
   const backgroundSelectorRef = useRef<HTMLDivElement>(null);
+  const [showBlurSelector, setShowBlurSelector] = useState(false);
+  const [blurIntensity, setBlurIntensity] = useState(20);
+  const blurSelectorRef = useRef<HTMLDivElement>(null);
+  const blurTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Canvas state
   const [zoom, setZoom] = useState(1);
@@ -94,6 +107,23 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
   };
 
   const brushSettings = externalBrushSettings || defaultBrushSettings;
+
+  // Debounced blur function for real-time preview
+  const handleBlurIntensityChange = useCallback((newIntensity: number) => {
+    setBlurIntensity(newIntensity);
+
+    // Clear existing timeout
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+    }
+
+    // Set new timeout for debounced blur application
+    blurTimeoutRef.current = setTimeout(() => {
+      if (onBlurBackground) {
+        onBlurBackground(newIntensity);
+      }
+    }, 150); // 150ms debounce for faster response
+  }, [onBlurBackground]);
 
   const handleClearAll = useCallback(() => {
     if (maskCanvasRef.current?.clearAll) {
@@ -171,6 +201,10 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
       setShowComparison(false);
       setComparisonProgress(0);
       setComparisonTargetProgress(0);
+      // Clear blur timeout
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -192,6 +226,25 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
       };
     }
   }, [showBackgroundSelector]);
+
+  // Close blur selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        blurSelectorRef.current &&
+        !blurSelectorRef.current.contains(event.target as Node)
+      ) {
+        setShowBlurSelector(false);
+      }
+    };
+
+    if (showBlurSelector) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [showBlurSelector]);
 
   // Handle mouse wheel zoom
   const handleWheel = useCallback(
@@ -281,7 +334,7 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
             size="sm"
             onClick={undo}
             disabled={
-              disabled || isProcessing || !maskCanvasRef.current?.canUndo
+              disabled || isProcessing || isBackgroundProcessing || isBackgroundBlurProcessing || !maskCanvasRef.current?.canUndo
             }
             className="border-gray-300 text-gray-700 hover:opacity-90"
             title="Undo (Ctrl+Z)"
@@ -293,7 +346,7 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
             size="sm"
             onClick={redo}
             disabled={
-              disabled || isProcessing || !maskCanvasRef.current?.canRedo
+              disabled || isProcessing || isBackgroundProcessing || isBackgroundBlurProcessing || !maskCanvasRef.current?.canRedo
             }
             className="border-gray-300 text-gray-700 hover:opacity-90"
             title="Redo (Ctrl+Y)"
@@ -304,7 +357,7 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
             variant="outline"
             size="sm"
             onClick={handleClearAll}
-            disabled={disabled || isProcessing || isBackgroundProcessing}
+            disabled={disabled || isProcessing || isBackgroundProcessing || isBackgroundBlurProcessing}
             className="border-gray-300 text-gray-700 hover:opacity-90"
             title="Clear All"
           >
@@ -317,10 +370,10 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
             zoom={zoom}
             onZoomChange={setZoom}
             onPanChange={setPan}
-            disabled={disabled || isProcessing}
+            disabled={disabled || isProcessing || isBackgroundProcessing || isBackgroundBlurProcessing}
           />
 
-          {(processedImageUrl || backgroundRemovedImageUrl) && (
+          {(processedImageUrl || backgroundRemovedImageUrl || backgroundBlurredImageUrl) && (
             <Button
               variant="outline"
               size="sm"
@@ -329,14 +382,16 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
               onMouseLeave={handleCompareEnd}
               onTouchStart={handleCompareStart}
               onTouchEnd={handleCompareEnd}
-              disabled={disabled || isProcessing || isBackgroundProcessing}
+              disabled={disabled || isProcessing || isBackgroundProcessing || isBackgroundBlurProcessing}
               className="border-gray-300 text-gray-700 hover:bg-gray-500"
               title={`Hold to compare with original${
-                processedImageUrl && backgroundRemovedImageUrl
+                [processedImageUrl, backgroundRemovedImageUrl, backgroundBlurredImageUrl].filter(Boolean).length > 1
                   ? " (final result)"
                   : processedImageUrl
                   ? " (inpaint result)"
-                  : " (background removed)"
+                  : backgroundRemovedImageUrl
+                  ? " (background removed)"
+                  : " (background blurred)"
               }`}
             >
               <UnfoldHorizontal className="w-4 h-4 " />
@@ -347,7 +402,7 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
             <Button
               onClick={onRemoveBackground}
               disabled={
-                disabled || isBackgroundProcessing || !onRemoveBackground
+                disabled || isBackgroundProcessing || isBackgroundBlurProcessing || !onRemoveBackground
               }
               className="bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
             >
@@ -367,7 +422,7 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
                   onClick={() =>
                     setShowBackgroundSelector(!showBackgroundSelector)
                   }
-                  disabled={disabled || isBackgroundProcessing}
+                  disabled={disabled || isBackgroundProcessing || isBackgroundBlurProcessing}
                   className="border-purple-300 text-purple-700 hover:bg-purple-50"
                   title="Replace background"
                 >
@@ -421,10 +476,98 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
                 )}
               </div>
             )}
+
+            {/* Background blur button and controls */}
+            <div
+              ref={blurSelectorRef}
+              className="relative inline-block ml-1"
+            >
+              <Button
+                onClick={() => {
+                  if (onBlurBackground) {
+                    onBlurBackground(blurIntensity);
+                    // Auto-show blur selector after first blur for better UX
+                    if (!backgroundBlurredImageUrl) {
+                      setTimeout(() => setShowBlurSelector(true), 1000);
+                    }
+                  }
+                }}
+                disabled={
+                  disabled || isBackgroundBlurProcessing || !onBlurBackground
+                }
+                className="bg-orange-600 hover:bg-orange-700 text-white shadow-sm"
+              >
+                <Focus className="w-4 h-4 mr-2" />
+                {isBackgroundBlurProcessing ? "Processing..." : "Blur Background"}
+              </Button>
+
+              {/* Blur intensity control dropdown - only show if blur has been processed */}
+              {backgroundBlurredImageUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowBlurSelector(!showBlurSelector)}
+                  disabled={disabled || isBackgroundBlurProcessing}
+                  className="border-orange-300 text-orange-700 hover:bg-orange-50 ml-1"
+                  title="Adjust blur intensity"
+                >
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              )}
+
+              {/* Blur selector dropdown - only show if blur has been processed */}
+              {showBlurSelector && backgroundBlurredImageUrl && (
+                <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                  <div className="p-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">
+                      Blur Intensity
+                    </h4>
+                    <div className="space-y-3">
+                      <Slider
+                        value={[blurIntensity]}
+                        onValueChange={(value) => handleBlurIntensityChange(value[0])}
+                        max={100}
+                        min={5}
+                        step={5}
+                        className="w-full"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>Light (5%)</span>
+                        <span className="font-medium">{blurIntensity}%</span>
+                        <span>Heavy (100%)</span>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleBlurIntensityChange(20)}
+                          className="flex-1 text-xs"
+                        >
+                          Default (20%)
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (onBlurBackground) {
+                              onBlurBackground(blurIntensity);
+                            }
+                            setShowBlurSelector(false);
+                          }}
+                          disabled={!onBlurBackground}
+                          className="flex-1 bg-orange-600 hover:bg-orange-700 text-white text-xs"
+                        >
+                          Apply Blur
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <Button
             onClick={handleProcess}
-            disabled={disabled || isProcessing}
+            disabled={disabled || isProcessing || isBackgroundProcessing || isBackgroundBlurProcessing}
             className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
           >
             <Wand2 className="w-4 h-4 mr-2" />
@@ -477,39 +620,47 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
             />
 
             {/* Processing Overlay - Outside transform container */}
-            {(isProcessing || isBackgroundProcessing) && (
+            {(isProcessing || isBackgroundProcessing || isBackgroundBlurProcessing) && (
               <div className="absolute inset-0 bg-black/30 backdrop-blur-sm rounded-lg flex items-center justify-center z-50">
                 <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-8 shadow-2xl text-center">
                   <div className="relative mb-6">
                     <div className="w-16 h-16 mx-auto">
                       <Sparkles className={`w-16 h-16 animate-spin ${
-                        isBackgroundProcessing ? 'text-purple-500' : 'text-blue-500'
+                        isBackgroundProcessing ? 'text-purple-500' :
+                        isBackgroundBlurProcessing ? 'text-orange-500' : 'text-blue-500'
                       }`} />
                     </div>
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className={`w-8 h-8 rounded-full animate-pulse ${
-                        isBackgroundProcessing ? 'bg-purple-500' : 'bg-blue-500'
+                        isBackgroundProcessing ? 'bg-purple-500' :
+                        isBackgroundBlurProcessing ? 'bg-orange-500' : 'bg-blue-500'
                       }`}></div>
                     </div>
                   </div>
                   <h3 className="text-xl font-semibold text-gray-800 mb-2">
-                    {isBackgroundProcessing ? 'Removing Background' : 'Processing Image'}
+                    {isBackgroundProcessing ? 'Removing Background' :
+                     isBackgroundBlurProcessing ? 'Blurring Background' : 'Processing Image'}
                   </h3>
                   <p className="text-gray-600 mb-4">
                     {isBackgroundProcessing
                       ? 'AI is removing the background from your image...'
+                      : isBackgroundBlurProcessing
+                      ? 'AI is blurring the background of your image...'
                       : 'AI is removing unwanted objects...'
                     }
                   </p>
                   <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
                     <div className={`w-2 h-2 rounded-full animate-bounce ${
-                      isBackgroundProcessing ? 'bg-purple-500' : 'bg-blue-500'
+                      isBackgroundProcessing ? 'bg-purple-500' :
+                      isBackgroundBlurProcessing ? 'bg-orange-500' : 'bg-blue-500'
                     }`}></div>
                     <div className={`w-2 h-2 rounded-full animate-bounce delay-100 ${
-                      isBackgroundProcessing ? 'bg-purple-500' : 'bg-blue-500'
+                      isBackgroundProcessing ? 'bg-purple-500' :
+                      isBackgroundBlurProcessing ? 'bg-orange-500' : 'bg-blue-500'
                     }`}></div>
                     <div className={`w-2 h-2 rounded-full animate-bounce delay-200 ${
-                      isBackgroundProcessing ? 'bg-purple-500' : 'bg-blue-500'
+                      isBackgroundProcessing ? 'bg-purple-500' :
+                      isBackgroundBlurProcessing ? 'bg-orange-500' : 'bg-blue-500'
                     }`}></div>
                   </div>
                 </div>
@@ -536,6 +687,8 @@ const arePropsEqual = (
     "processedImageUrl",
     "isBackgroundProcessing",
     "backgroundRemovedImageUrl",
+    "isBackgroundBlurProcessing",
+    "backgroundBlurredImageUrl",
     "finalResult",
   ];
 

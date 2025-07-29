@@ -10,13 +10,22 @@ export interface ImageProject {
   processedResults: Record<string, string>; // imageId -> processedImageUrl (inpaint results)
   backgroundRemovedResults: Record<string, string>; // imageId -> backgroundRemovedImageUrl (final result with background)
   originalBackgroundRemovedResults: Record<string, string>; // imageId -> original background removed (no background)
+  backgroundBlurredResults: Record<string, string>; // imageId -> backgroundBlurredImageUrl (blurred background results)
+  // Store blur data for real-time adjustment
+  backgroundBlurData: Record<string, {
+    originalImageBase64: string;
+    removedBackgroundBase64: string;
+    currentIntensity: number;
+  }>; // imageId -> blur data for real-time adjustment
   maskStates: Record<string, MaskState>; // imageId -> maskState with size info
   historyStates: Record<string, { history: string[]; historyIndex: number }>; // imageId -> history data
   processingStates: Record<string, boolean>; // imageId -> isProcessing (inpaint)
   backgroundProcessingStates: Record<string, boolean>; // imageId -> isBackgroundProcessing
+  backgroundBlurProcessingStates: Record<string, boolean>; // imageId -> isBackgroundBlurProcessing
   // Track operation timestamps to determine the latest result
   processedTimestamps: Record<string, number>; // imageId -> timestamp when inpaint was completed
   backgroundRemovedTimestamps: Record<string, number>; // imageId -> timestamp when background removal was completed
+  backgroundBlurredTimestamps: Record<string, number>; // imageId -> timestamp when background blur was completed
 }
 
 export const useImageProjectManager = () => {
@@ -26,12 +35,16 @@ export const useImageProjectManager = () => {
     processedResults: {},
     backgroundRemovedResults: {},
     originalBackgroundRemovedResults: {},
+    backgroundBlurredResults: {},
+    backgroundBlurData: {},
     maskStates: {},
     historyStates: {},
     processingStates: {},
     backgroundProcessingStates: {},
+    backgroundBlurProcessingStates: {},
     processedTimestamps: {},
     backgroundRemovedTimestamps: {},
+    backgroundBlurredTimestamps: {},
   });
 
   // Helper functions
@@ -75,39 +88,62 @@ export const useImageProjectManager = () => {
     return project.backgroundProcessingStates[project.currentImageId] || false;
   }, [project.currentImageId, project.backgroundProcessingStates]);
 
+  const getCurrentBackgroundBlurredUrl = useCallback((): string | null => {
+    if (!project.currentImageId) return null;
+    return project.backgroundBlurredResults[project.currentImageId] || null;
+  }, [project.currentImageId, project.backgroundBlurredResults]);
+
+  const getCurrentBackgroundBlurProcessingState = useCallback((): boolean => {
+    if (!project.currentImageId) return false;
+    return project.backgroundBlurProcessingStates[project.currentImageId] || false;
+  }, [project.currentImageId, project.backgroundBlurProcessingStates]);
+
+  const getCurrentBackgroundBlurData = useCallback(() => {
+    if (!project.currentImageId) return null;
+    return project.backgroundBlurData[project.currentImageId] || null;
+  }, [project.currentImageId, project.backgroundBlurData]);
+
   // Get the final result based on timestamps (latest operation wins)
   const getCurrentFinalResult = useCallback((): {
     url: string | null;
-    type: "inpaint" | "background" | "final" | "none";
+    type: "inpaint" | "background" | "blur" | "final" | "none";
   } => {
     if (!project.currentImageId) return { url: null, type: "none" };
 
     const imageId = project.currentImageId;
     const processedUrl = project.processedResults[imageId];
     const backgroundRemovedUrl = project.backgroundRemovedResults[imageId];
+    const backgroundBlurredUrl = project.backgroundBlurredResults[imageId];
     const processedTimestamp = project.processedTimestamps[imageId] || 0;
     const backgroundRemovedTimestamp = project.backgroundRemovedTimestamps[imageId] || 0;
+    const backgroundBlurredTimestamp = project.backgroundBlurredTimestamps[imageId] || 0;
 
-    // If both results exist, compare timestamps and mark as final
-    if (processedUrl && backgroundRemovedUrl) {
-      if (backgroundRemovedTimestamp > processedTimestamp) {
-        return { url: backgroundRemovedUrl, type: "final" };
-      } else {
-        return { url: processedUrl, type: "final" };
-      }
-    } else if (processedUrl) {
-      return { url: processedUrl, type: "inpaint" };
-    } else if (backgroundRemovedUrl) {
-      return { url: backgroundRemovedUrl, type: "background" };
+    // Find the latest operation
+    const operations = [
+      { url: processedUrl, timestamp: processedTimestamp, type: "inpaint" as const },
+      { url: backgroundRemovedUrl, timestamp: backgroundRemovedTimestamp, type: "background" as const },
+      { url: backgroundBlurredUrl, timestamp: backgroundBlurredTimestamp, type: "blur" as const },
+    ].filter(op => op.url); // Only include operations that have results
+
+    if (operations.length === 0) {
+      return { url: null, type: "none" };
     }
 
-    return { url: null, type: "none" };
+    // Sort by timestamp and get the latest
+    const latestOperation = operations.sort((a, b) => b.timestamp - a.timestamp)[0];
+
+    // If there are multiple operations, mark as final, otherwise use the specific type
+    const resultType = operations.length > 1 ? "final" : latestOperation.type;
+
+    return { url: latestOperation.url, type: resultType };
   }, [
     project.currentImageId,
     project.processedResults,
     project.backgroundRemovedResults,
+    project.backgroundBlurredResults,
     project.processedTimestamps,
     project.backgroundRemovedTimestamps,
+    project.backgroundBlurredTimestamps,
   ]);
 
   // State setters
@@ -126,6 +162,16 @@ export const useImageProjectManager = () => {
       ...prev,
       backgroundProcessingStates: {
         ...prev.backgroundProcessingStates,
+        [imageId]: isProcessing,
+      },
+    }));
+  }, []);
+
+  const setImageBackgroundBlurProcessingState = useCallback((imageId: string, isProcessing: boolean) => {
+    setProject((prev) => ({
+      ...prev,
+      backgroundBlurProcessingStates: {
+        ...prev.backgroundBlurProcessingStates,
         [imageId]: isProcessing,
       },
     }));
@@ -153,23 +199,31 @@ export const useImageProjectManager = () => {
       const newProcessedResults = { ...prev.processedResults };
       const newBackgroundRemovedResults = { ...prev.backgroundRemovedResults };
       const newOriginalBackgroundRemovedResults = { ...prev.originalBackgroundRemovedResults };
+      const newBackgroundBlurredResults = { ...prev.backgroundBlurredResults };
+      const newBackgroundBlurData = { ...prev.backgroundBlurData };
       const newMaskStates = { ...prev.maskStates };
       const newHistoryStates = { ...prev.historyStates };
       const newProcessingStates = { ...prev.processingStates };
       const newBackgroundProcessingStates = { ...prev.backgroundProcessingStates };
+      const newBackgroundBlurProcessingStates = { ...prev.backgroundBlurProcessingStates };
       const newProcessedTimestamps = { ...prev.processedTimestamps };
       const newBackgroundRemovedTimestamps = { ...prev.backgroundRemovedTimestamps };
+      const newBackgroundBlurredTimestamps = { ...prev.backgroundBlurredTimestamps };
 
       // Clean up all data for this image
       delete newProcessedResults[imageId];
       delete newBackgroundRemovedResults[imageId];
       delete newOriginalBackgroundRemovedResults[imageId];
+      delete newBackgroundBlurredResults[imageId];
+      delete newBackgroundBlurData[imageId];
       delete newMaskStates[imageId];
       delete newHistoryStates[imageId];
       delete newProcessingStates[imageId];
       delete newBackgroundProcessingStates[imageId];
+      delete newBackgroundBlurProcessingStates[imageId];
       delete newProcessedTimestamps[imageId];
       delete newBackgroundRemovedTimestamps[imageId];
+      delete newBackgroundBlurredTimestamps[imageId];
 
       // If removing current image, select another one
       let newCurrentImageId = prev.currentImageId;
@@ -183,12 +237,16 @@ export const useImageProjectManager = () => {
         processedResults: newProcessedResults,
         backgroundRemovedResults: newBackgroundRemovedResults,
         originalBackgroundRemovedResults: newOriginalBackgroundRemovedResults,
+        backgroundBlurredResults: newBackgroundBlurredResults,
+        backgroundBlurData: newBackgroundBlurData,
         maskStates: newMaskStates,
         historyStates: newHistoryStates,
         processingStates: newProcessingStates,
         backgroundProcessingStates: newBackgroundProcessingStates,
+        backgroundBlurProcessingStates: newBackgroundBlurProcessingStates,
         processedTimestamps: newProcessedTimestamps,
         backgroundRemovedTimestamps: newBackgroundRemovedTimestamps,
+        backgroundBlurredTimestamps: newBackgroundBlurredTimestamps,
       };
     });
   }, []);
@@ -264,27 +322,65 @@ export const useImageProjectManager = () => {
     }));
   }, []);
 
+  const setBackgroundBlurredResult = useCallback((imageId: string, url: string) => {
+    const timestamp = Date.now();
+    setProject((prev) => ({
+      ...prev,
+      backgroundBlurredResults: {
+        ...prev.backgroundBlurredResults,
+        [imageId]: url,
+      },
+      backgroundBlurredTimestamps: {
+        ...prev.backgroundBlurredTimestamps,
+        [imageId]: timestamp,
+      },
+    }));
+  }, []);
+
+  const setBackgroundBlurData = useCallback((imageId: string, data: {
+    originalImageBase64: string;
+    removedBackgroundBase64: string;
+    currentIntensity: number;
+  }) => {
+    setProject((prev) => ({
+      ...prev,
+      backgroundBlurData: {
+        ...prev.backgroundBlurData,
+        [imageId]: data,
+      },
+    }));
+  }, []);
+
   const clearAllResults = useCallback((imageId: string) => {
     setProject((prev) => {
       const newProcessedResults = { ...prev.processedResults };
       const newBackgroundRemovedResults = { ...prev.backgroundRemovedResults };
       const newOriginalBackgroundRemovedResults = { ...prev.originalBackgroundRemovedResults };
+      const newBackgroundBlurredResults = { ...prev.backgroundBlurredResults };
+      const newBackgroundBlurData = { ...prev.backgroundBlurData };
       const newProcessedTimestamps = { ...prev.processedTimestamps };
       const newBackgroundRemovedTimestamps = { ...prev.backgroundRemovedTimestamps };
+      const newBackgroundBlurredTimestamps = { ...prev.backgroundBlurredTimestamps };
 
       delete newProcessedResults[imageId];
       delete newBackgroundRemovedResults[imageId];
       delete newOriginalBackgroundRemovedResults[imageId];
+      delete newBackgroundBlurredResults[imageId];
+      delete newBackgroundBlurData[imageId];
       delete newProcessedTimestamps[imageId];
       delete newBackgroundRemovedTimestamps[imageId];
+      delete newBackgroundBlurredTimestamps[imageId];
 
       return {
         ...prev,
         processedResults: newProcessedResults,
         backgroundRemovedResults: newBackgroundRemovedResults,
         originalBackgroundRemovedResults: newOriginalBackgroundRemovedResults,
+        backgroundBlurredResults: newBackgroundBlurredResults,
+        backgroundBlurData: newBackgroundBlurData,
         processedTimestamps: newProcessedTimestamps,
         backgroundRemovedTimestamps: newBackgroundRemovedTimestamps,
+        backgroundBlurredTimestamps: newBackgroundBlurredTimestamps,
       };
     });
   }, []);
@@ -296,12 +392,16 @@ export const useImageProjectManager = () => {
       processedResults: {},
       backgroundRemovedResults: {},
       originalBackgroundRemovedResults: {},
+      backgroundBlurredResults: {},
+      backgroundBlurData: {},
       maskStates: {},
       historyStates: {},
       processingStates: {},
       backgroundProcessingStates: {},
+      backgroundBlurProcessingStates: {},
       processedTimestamps: {},
       backgroundRemovedTimestamps: {},
+      backgroundBlurredTimestamps: {},
     });
   }, []);
 
@@ -315,9 +415,13 @@ export const useImageProjectManager = () => {
     getCurrentBackgroundRemovedUrl,
     getCurrentOriginalBackgroundRemovedUrl,
     getCurrentBackgroundProcessingState,
+    getCurrentBackgroundBlurredUrl,
+    getCurrentBackgroundBlurProcessingState,
+    getCurrentBackgroundBlurData,
     getCurrentFinalResult,
     setImageProcessingState,
     setImageBackgroundProcessingState,
+    setImageBackgroundBlurProcessingState,
     addImage,
     addImages,
     removeImage,
@@ -326,6 +430,8 @@ export const useImageProjectManager = () => {
     saveHistoryState,
     setProcessedResult,
     setBackgroundRemovedResult,
+    setBackgroundBlurredResult,
+    setBackgroundBlurData,
     replaceBackground,
     clearAllResults,
     resetProject,

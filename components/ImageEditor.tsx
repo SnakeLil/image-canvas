@@ -13,7 +13,7 @@ import { InstructionsModal } from "./InstructionsModal";
 import { useInstructions } from "../hooks/useInstructions";
 import { Card } from "@/components/ui/card";
 import { type AIProvider } from "@/lib/ai-services";
-import { removeBackground, canvasToBase64 } from "@/lib/background-removal";
+import { removeBackground, blurBackground, adjustBlurIntensity, canvasToBase64 } from "@/lib/background-removal";
 import { DragOverlay } from "./DragOverlay";
 
 export interface ImageData {
@@ -39,9 +39,13 @@ export const ImageEditor: React.FC = () => {
     getCurrentBackgroundRemovedUrl,
     getCurrentOriginalBackgroundRemovedUrl,
     getCurrentBackgroundProcessingState,
+    getCurrentBackgroundBlurredUrl,
+    getCurrentBackgroundBlurProcessingState,
+    getCurrentBackgroundBlurData,
     getCurrentFinalResult,
     setImageProcessingState,
     setImageBackgroundProcessingState,
+    setImageBackgroundBlurProcessingState,
     addImage,
     addImages,
     removeImage,
@@ -50,6 +54,8 @@ export const ImageEditor: React.FC = () => {
     saveHistoryState,
     setProcessedResult,
     setBackgroundRemovedResult,
+    setBackgroundBlurredResult,
+    setBackgroundBlurData,
     replaceBackground,
     clearAllResults,
   } = useImageProjectManager();
@@ -599,6 +605,130 @@ export const ImageEditor: React.FC = () => {
     clearAllResults(currentImage.id);
   }, [getCurrentImage, clearAllResults]);
 
+  const handleBlurBackground = useCallback(async (blurIntensity: number) => {
+    const currentImage = getCurrentImage();
+    if (!currentImage) return;
+
+    try {
+      // Set processing state for current image
+      setImageBackgroundBlurProcessingState(currentImage.id, true);
+      setError(null);
+
+      // Check if we already have blur data cached
+      const existingBlurData = getCurrentBackgroundBlurData();
+
+      if (existingBlurData) {
+        // We have cached data, just adjust blur intensity (frontend only)
+        const resultBase64 = await adjustBlurIntensity(
+          existingBlurData.originalImageBase64,
+          existingBlurData.removedBackgroundBase64,
+          blurIntensity
+        );
+
+        const resultImageUrl = `data:image/png;base64,${resultBase64}`;
+        setBackgroundBlurredResult(currentImage.id, resultImageUrl);
+
+        // Update the cached intensity
+        setBackgroundBlurData(currentImage.id, {
+          ...existingBlurData,
+          currentIntensity: blurIntensity
+        });
+      } else {
+        // First time blur - need to prepare data
+        let originalImageBase64: string;
+        let removedBackgroundBase64: string;
+
+        // Convert the source image to base64
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          throw new Error("Failed to get canvas context");
+        }
+
+        // Load the image (use processed result if available, otherwise use original)
+        const currentProcessedUrl = getCurrentProcessedUrl();
+        const imageUrl = finalUrl || currentProcessedUrl || currentImage.url;
+
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = imageUrl;
+        });
+
+        // Set canvas size to match image
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+
+        // Draw image to canvas
+        ctx.drawImage(img, 0, 0);
+
+        // Convert to base64
+        originalImageBase64 = canvasToBase64(canvas);
+
+        // Check if we already have a background-removed result
+        const currentOriginalBackgroundRemovedUrl = getCurrentOriginalBackgroundRemovedUrl();
+
+        if (currentOriginalBackgroundRemovedUrl) {
+          // We already have a background-removed result, use it
+          const response = await fetch(currentOriginalBackgroundRemovedUrl);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          removedBackgroundBase64 = await new Promise((resolve, reject) => {
+            reader.onload = () => {
+              const result = reader.result as string;
+              const base64 = result.split(',')[1];
+              resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } else {
+          // Need to remove background first
+          removedBackgroundBase64 = await removeBackground(originalImageBase64);
+        }
+
+        // Apply blur with the prepared data
+        const resultBase64 = await adjustBlurIntensity(
+          originalImageBase64,
+          removedBackgroundBase64,
+          blurIntensity
+        );
+
+        const resultImageUrl = `data:image/png;base64,${resultBase64}`;
+        setBackgroundBlurredResult(currentImage.id, resultImageUrl);
+
+        // Cache the data for future adjustments
+        setBackgroundBlurData(currentImage.id, {
+          originalImageBase64,
+          removedBackgroundBase64,
+          currentIntensity: blurIntensity
+        });
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to blur background. Please try again."
+      );
+      console.error("Background blur error:", err);
+    } finally {
+      // Clear processing state for current image
+      setImageBackgroundBlurProcessingState(currentImage.id, false);
+    }
+  }, [
+    getCurrentImage,
+    setImageBackgroundBlurProcessingState,
+    getCurrentProcessedUrl,
+    getCurrentOriginalBackgroundRemovedUrl,
+    getCurrentBackgroundBlurData,
+    finalUrl,
+    setBackgroundBlurredResult,
+    setBackgroundBlurData
+  ]);
+
   const handleImageRemove = useCallback((imageId: string) => {
     removeImage(imageId);
   }, [removeImage]);
@@ -696,7 +826,8 @@ export const ImageEditor: React.FC = () => {
                   onProcessImage={handleProcessImage}
                   disabled={
                     getCurrentProcessingState() ||
-                    getCurrentBackgroundProcessingState()
+                    getCurrentBackgroundProcessingState() ||
+                    getCurrentBackgroundBlurProcessingState()
                   }
                   brushSettings={memoizedBrushSettings}
                   onBrushSettingsChange={setBrushSettings}
@@ -714,6 +845,9 @@ export const ImageEditor: React.FC = () => {
                   isBackgroundProcessing={getCurrentBackgroundProcessingState()}
                   backgroundRemovedImageUrl={getCurrentBackgroundRemovedUrl()}
                   onReplaceBackground={handleReplaceBackground}
+                  onBlurBackground={handleBlurBackground}
+                  isBackgroundBlurProcessing={getCurrentBackgroundBlurProcessingState()}
+                  backgroundBlurredImageUrl={getCurrentBackgroundBlurredUrl()}
                   onClearAll={handleClearAll}
                 />
               </div>
@@ -725,12 +859,15 @@ export const ImageEditor: React.FC = () => {
               onBrushSettingsChange={setBrushSettings}
               processedImageUrl={currentProcessedUrl}
               backgroundRemovedImageUrl={getCurrentBackgroundRemovedUrl()}
+              backgroundBlurredImageUrl={getCurrentBackgroundBlurredUrl()}
               finalResult={finalResult}
               isProcessing={getCurrentProcessingState()}
               isBackgroundProcessing={getCurrentBackgroundProcessingState()}
+              isBackgroundBlurProcessing={getCurrentBackgroundBlurProcessingState()}
               disabled={
                 getCurrentProcessingState() ||
-                getCurrentBackgroundProcessingState()
+                getCurrentBackgroundProcessingState() ||
+                getCurrentBackgroundBlurProcessingState()
               }
               onShowHelp={handleShowHelp}
             />

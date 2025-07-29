@@ -5,7 +5,7 @@ import type { ImageData } from "./ImageEditor";
 
 export interface ImageCanvasProps {
   imageData: ImageData;
-  finalResult?: { url: string | null; type: 'inpaint' | 'background' | 'final' | 'none' };
+  finalResult?: { url: string | null; type: 'inpaint' | 'background' | 'blur' | 'final' | 'none' };
   canvasSize: { width: number; height: number };
   showComparison?: boolean;
   comparisonProgress?: number;

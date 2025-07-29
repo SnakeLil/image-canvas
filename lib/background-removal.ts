@@ -11,6 +11,10 @@ export interface BackgroundReplacementOptions extends BackgroundRemovalOptions {
   blendMode?: 'normal' | 'multiply' | 'overlay';
 }
 
+export interface BackgroundBlurOptions extends BackgroundRemovalOptions {
+  blurIntensity?: number; // blur intensity percentage (0-100), default 20
+}
+
 // Convert image to base64
 export const imageToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -174,6 +178,181 @@ export const replaceBackground = async (
     console.error('Background replacement error:', error);
     throw error;
   }
+};
+
+// Blur background by removing background and compositing with blurred original
+export const blurBackground = async (
+  originalImageBase64: string,
+  options: BackgroundBlurOptions = {}
+): Promise<string> => {
+  const { blurIntensity = 20 } = options;
+
+  try {
+    // First remove the background to get the foreground subject
+    const removedBgImage = await removeBackground(originalImageBase64, options);
+
+    // Then composite with blurred original background
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      const originalImg = new Image();
+      const foregroundImg = new Image();
+      let loadedCount = 0;
+
+      const onImageLoad = () => {
+        loadedCount++;
+        if (loadedCount === 2) {
+          // Set canvas size to match the original image
+          canvas.width = originalImg.width;
+          canvas.height = originalImg.height;
+
+          // Apply blur filter to the context for background
+          const blurAmount = (blurIntensity / 100) * 20; // Convert percentage to pixel blur (max 20px)
+          ctx.filter = `blur(${blurAmount}px)`;
+
+          // Draw blurred original image as background
+          ctx.drawImage(originalImg, 0, 0);
+
+          // Reset filter for foreground
+          ctx.filter = 'none';
+
+          // Draw foreground (removed background image) on top
+          ctx.drawImage(foregroundImg, 0, 0);
+
+          const resultDataURL = canvas.toDataURL('image/png');
+          const resultBase64 = resultDataURL.split(',')[1];
+          resolve(resultBase64);
+        }
+      };
+
+      originalImg.onload = onImageLoad;
+      foregroundImg.onload = onImageLoad;
+
+      originalImg.onerror = () => reject(new Error('Failed to load original image'));
+      foregroundImg.onerror = () => reject(new Error('Failed to load foreground image'));
+
+      originalImg.src = `data:image/png;base64,${originalImageBase64}`;
+      foregroundImg.src = `data:image/png;base64,${removedBgImage}`;
+    });
+  } catch (error) {
+    console.error('Background blur error:', error);
+    throw error;
+  }
+};
+
+// Apply blur effect to an already processed background-removed image
+export const applyBlurToRemovedBackground = async (
+  originalImageBase64: string,
+  removedBackgroundImageBase64: string,
+  blurIntensity: number = 20
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('Failed to get canvas context'));
+      return;
+    }
+
+    const originalImg = new Image();
+    const foregroundImg = new Image();
+    let loadedCount = 0;
+
+    const onImageLoad = () => {
+      loadedCount++;
+      if (loadedCount === 2) {
+        // Set canvas size to match the original image
+        canvas.width = originalImg.width;
+        canvas.height = originalImg.height;
+
+        // Apply blur filter to the context for background
+        const blurAmount = (blurIntensity / 100) * 20; // Convert percentage to pixel blur (max 20px)
+        ctx.filter = `blur(${blurAmount}px)`;
+
+        // Draw blurred original image as background
+        ctx.drawImage(originalImg, 0, 0);
+
+        // Reset filter for foreground
+        ctx.filter = 'none';
+
+        // Draw foreground (removed background image) on top
+        ctx.drawImage(foregroundImg, 0, 0);
+
+        const resultDataURL = canvas.toDataURL('image/png');
+        const resultBase64 = resultDataURL.split(',')[1];
+        resolve(resultBase64);
+      }
+    };
+
+    originalImg.onload = onImageLoad;
+    foregroundImg.onload = onImageLoad;
+
+    originalImg.onerror = () => reject(new Error('Failed to load original image'));
+    foregroundImg.onerror = () => reject(new Error('Failed to load foreground image'));
+
+    originalImg.src = `data:image/png;base64,${originalImageBase64}`;
+    foregroundImg.src = `data:image/png;base64,${removedBackgroundImageBase64}`;
+  });
+};
+
+// Real-time blur adjustment (frontend only, no API calls)
+export const adjustBlurIntensity = (
+  originalImageBase64: string,
+  removedBackgroundBase64: string,
+  blurIntensity: number = 20
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('Failed to get canvas context'));
+      return;
+    }
+
+    const originalImg = new Image();
+    const foregroundImg = new Image();
+    let loadedCount = 0;
+
+    const onImageLoad = () => {
+      loadedCount++;
+      if (loadedCount === 2) {
+        // Set canvas size to match the original image
+        canvas.width = originalImg.width;
+        canvas.height = originalImg.height;
+
+        // Apply blur filter to the context for background
+        const blurAmount = (blurIntensity / 100) * 20; // Convert percentage to pixel blur (max 20px)
+        ctx.filter = `blur(${blurAmount}px)`;
+
+        // Draw blurred original image as background
+        ctx.drawImage(originalImg, 0, 0);
+
+        // Reset filter for foreground
+        ctx.filter = 'none';
+
+        // Draw foreground (removed background image) on top
+        ctx.drawImage(foregroundImg, 0, 0);
+
+        const resultDataURL = canvas.toDataURL('image/png');
+        const resultBase64 = resultDataURL.split(',')[1];
+        resolve(resultBase64);
+      }
+    };
+
+    originalImg.onload = onImageLoad;
+    foregroundImg.onload = onImageLoad;
+
+    originalImg.onerror = () => reject(new Error('Failed to load original image'));
+    foregroundImg.onerror = () => reject(new Error('Failed to load foreground image'));
+
+    originalImg.src = `data:image/png;base64,${originalImageBase64}`;
+    foregroundImg.src = `data:image/png;base64,${removedBackgroundBase64}`;
+  });
 };
 
 
