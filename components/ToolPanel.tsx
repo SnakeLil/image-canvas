@@ -1,28 +1,32 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { BrushControls } from './BrushControls';
-import { Download, HelpCircle, Maximize2, X } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import React, { useState, useRef, useEffect } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { BrushControls } from "./BrushControls";
+import { Download, HelpCircle, Maximize2, X } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { FireworksEffect } from "./FireworksEffect";
 
 interface ToolPanelProps {
   brushSettings: {
     size: number;
     opacity: number;
     color: string;
-    shape: import('./MagicCursor').CursorShape;
+    shape: import("./MagicCursor").CursorShape;
   };
   onBrushSettingsChange: (settings: {
     size: number;
     opacity: number;
     color: string;
-    shape: import('./MagicCursor').CursorShape;
+    shape: import("./MagicCursor").CursorShape;
   }) => void;
   processedImageUrl?: string | null;
   backgroundRemovedImageUrl?: string | null;
-  finalResult?: { url: string | null; type: 'inpaint' | 'background' | 'final' | 'none' };
+  finalResult?: {
+    url: string | null;
+    type: "inpaint" | "background" | "final" | "none";
+  };
   isProcessing?: boolean;
   isBackgroundProcessing?: boolean;
   disabled?: boolean;
@@ -38,18 +42,36 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
   isProcessing = false,
   isBackgroundProcessing = false,
   disabled = false,
-  onShowHelp
+  onShowHelp,
 }) => {
+  const [showFire, setShowFire] = useState(false);
   // Use the finalResult from props (based on timestamps)
   const getFinalResultUrl = () => {
     return finalResult?.url || null;
   };
 
   const getFinalResultType = () => {
-    return finalResult?.type || 'none';
+    return finalResult?.type || "none";
   };
   const [showPreview, setShowPreview] = useState(false);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const hasCelebrate = useRef(false);
 
+  const handleCelebrate = () => {
+    setShowFire(true);
+    setTimeout(() => {
+      setShowFire(false);
+    }, 3000);
+  };
+  useEffect(() => {
+    if (
+      (processedImageUrl || backgroundRemovedImageUrl) &&
+      !hasCelebrate.current
+    ) {
+      handleCelebrate();
+      hasCelebrate.current = true;
+    }
+  }, [processedImageUrl, backgroundRemovedImageUrl]);
   const handleShowHelp = () => {
     if (onShowHelp) {
       onShowHelp();
@@ -78,11 +100,14 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
           </Button>
         </div>
       </div>
-      
+
       {/* Tool Panel Content */}
       <div className="flex-1 p-4 space-y-4 overflow-y-auto custom-scrollbar">
         {/* Result Preview */}
-        {(processedImageUrl || backgroundRemovedImageUrl || isProcessing || isBackgroundProcessing) && (
+        {(processedImageUrl ||
+          backgroundRemovedImageUrl ||
+          isProcessing ||
+          isBackgroundProcessing) && (
           <Card className="p-4 bg-white border border-gray-200 shadow-sm">
             <h4 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -90,50 +115,70 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
             </h4>
 
             <div
+              ref={previewContainerRef}
               className={`relative aspect-square bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl overflow-hidden border border-gray-200 mb-4 group ${
-                processedImageUrl ? 'cursor-pointer hover:border-blue-300 transition-colors' : ''
+                processedImageUrl
+                  ? "cursor-pointer hover:border-blue-300 transition-colors"
+                  : ""
               }`}
               onClick={handlePreviewClick}
             >
               {/* Checkerboard pattern for transparency */}
-              <div className="absolute inset-0 opacity-20"
-                   style={{
-                     backgroundImage: `
+              <div
+                className="absolute inset-0 opacity-20"
+                style={{
+                  backgroundImage: `
                        linear-gradient(45deg, #ccc 25%, transparent 25%),
                        linear-gradient(-45deg, #ccc 25%, transparent 25%),
                        linear-gradient(45deg, transparent 75%, #ccc 75%),
                        linear-gradient(-45deg, transparent 75%, #ccc 75%)
                      `,
-                     backgroundSize: '12px 12px',
-                     backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px'
-                   }}
+                  backgroundSize: "12px 12px",
+                  backgroundPosition: "0 0, 0 6px, 6px -6px, -6px 0px",
+                }}
               />
 
               <div className="absolute inset-0 flex items-center justify-center">
-                {(isProcessing || isBackgroundProcessing) ? (
+                {isProcessing || isBackgroundProcessing ? (
                   <div className="text-center">
                     <div className="relative">
-                      <div className={`animate-spin rounded-full h-8 w-8 border-4 mx-auto mb-3 ${
-                        isBackgroundProcessing
-                          ? 'border-purple-200 border-t-purple-600'
-                          : 'border-blue-200 border-t-blue-600'
-                      }`}></div>
+                      <div
+                        className={`animate-spin rounded-full h-8 w-8 border-4 mx-auto mb-3 ${
+                          isBackgroundProcessing
+                            ? "border-purple-200 border-t-purple-600"
+                            : "border-blue-200 border-t-blue-600"
+                        }`}
+                      ></div>
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <div className={`w-2 h-2 rounded-full animate-pulse ${
-                          isBackgroundProcessing ? 'bg-purple-600' : 'bg-blue-600'
-                        }`}></div>
+                        <div
+                          className={`w-2 h-2 rounded-full animate-pulse ${
+                            isBackgroundProcessing
+                              ? "bg-purple-600"
+                              : "bg-blue-600"
+                          }`}
+                        ></div>
                       </div>
                     </div>
                     <p className="text-xs font-medium text-gray-600">
-                      {isBackgroundProcessing ? 'Removing Background...' : 'Processing...'}
+                      {isBackgroundProcessing
+                        ? "Removing Background..."
+                        : "Processing..."}
                     </p>
-                    <p className="text-xs text-gray-500">AI is working its magic ✨</p>
+                    <p className="text-xs text-gray-500">
+                      AI is working its magic ✨
+                    </p>
                   </div>
                 ) : getFinalResultUrl() ? (
                   <div className="relative w-full h-full flex justify-center">
                     <img
                       src={getFinalResultUrl()!}
-                      alt={getFinalResultType() === 'final' ? "Final Result" : getFinalResultType() === 'inpaint' ? "Processed" : "Background Removed"}
+                      alt={
+                        getFinalResultType() === "final"
+                          ? "Final Result"
+                          : getFinalResultType() === "inpaint"
+                          ? "Processed"
+                          : "Background Removed"
+                      }
                       className="max-w-full max-h-full object-contain rounded-lg shadow-sm"
                     />
                     {/* Hover overlay */}
@@ -148,10 +193,21 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
 
               {/* Status badge */}
               {getFinalResultUrl() && (
-                <div className={`absolute top-2 right-2 text-white text-xs px-2 py-1 rounded-full font-medium ${
-                  getFinalResultType() === 'final' ? 'bg-blue-500' : getFinalResultType() === 'inpaint' ? 'bg-green-500' : 'bg-purple-500'
-                }`}>
-                  ✓ {getFinalResultType() === 'final' ? 'Final Result' : getFinalResultType() === 'inpaint' ? 'Processed' : 'Background Removed'}
+                <div
+                  className={`absolute top-2 right-2 text-white text-xs px-2 py-1 rounded-full font-medium ${
+                    getFinalResultType() === "final"
+                      ? "bg-blue-500"
+                      : getFinalResultType() === "inpaint"
+                      ? "bg-green-500"
+                      : "bg-purple-500"
+                  }`}
+                >
+                  ✓{" "}
+                  {getFinalResultType() === "final"
+                    ? "Final Result"
+                    : getFinalResultType() === "inpaint"
+                    ? "Processed"
+                    : "Background Removed"}
                 </div>
               )}
 
@@ -161,42 +217,58 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
                   Click to preview
                 </div>
               )}
+
+              {/* Fireworks Effect - positioned to overlay the preview */}
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{ zIndex: 10 }}
+              >
+                <FireworksEffect
+                  isActive={showFire}
+                  containerRef={previewContainerRef}
+                  onComplete={() => {
+                    // Fireworks animation completed - could add additional effects here
+                  }}
+                />
+              </div>
             </div>
 
             {getFinalResultUrl() && (
               <Button
                 asChild
                 className={`w-full text-white shadow-sm ${
-                  getFinalResultType() === 'final'
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
-                    : getFinalResultType() === 'inpaint'
-                    ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
-                    : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700'
+                  getFinalResultType() === "final"
+                    ? "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                    : getFinalResultType() === "inpaint"
+                    ? "bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+                    : "bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
                 }`}
                 size="sm"
               >
                 <a
                   href={getFinalResultUrl()!}
                   download={
-                    getFinalResultType() === 'final' ? "final-result.png" :
-                    getFinalResultType() === 'inpaint' ? "processed-image.png" :
-                    "background-removed.png"
+                    getFinalResultType() === "final"
+                      ? "final-result.png"
+                      : getFinalResultType() === "inpaint"
+                      ? "processed-image.png"
+                      : "background-removed.png"
                   }
                   className="flex items-center justify-center gap-2"
                 >
                   <Download className="w-4 h-4" />
-                  Download {
-                    getFinalResultType() === 'final' ? 'Final Result' :
-                    getFinalResultType() === 'inpaint' ? 'Result' :
-                    'Background Removed'
-                  }
+                  Download{" "}
+                  {getFinalResultType() === "final"
+                    ? "Final Result"
+                    : getFinalResultType() === "inpaint"
+                    ? "Result"
+                    : "Background Removed"}
                 </a>
               </Button>
             )}
           </Card>
         )}
         <Card className="p-4 bg-white border border-gray-200 shadow-sm">
-          
           <h4 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
             <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
             Brush Settings
@@ -224,9 +296,11 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
               <img
                 src={getFinalResultUrl()!}
                 alt={
-                  getFinalResultType() === 'final' ? "Final Result Preview" :
-                  getFinalResultType() === 'inpaint' ? "Processed Image Preview" :
-                  "Background Removed Preview"
+                  getFinalResultType() === "final"
+                    ? "Final Result Preview"
+                    : getFinalResultType() === "inpaint"
+                    ? "Processed Image Preview"
+                    : "Background Removed Preview"
                 }
                 className="max-w-full max-h-full object-contain rounded-lg"
               />
