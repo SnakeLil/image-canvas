@@ -473,6 +473,7 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
               initialHistoryState={initialHistoryState}
               onMaskStateChange={onMaskStateChange}
               onHistoryStateChange={onHistoryStateChange}
+              zoom={zoom}
             />
 
             {/* Processing Overlay - Outside transform container */}

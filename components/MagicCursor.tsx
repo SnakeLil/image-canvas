@@ -107,12 +107,7 @@ const createDynamicCircleSVG = (size: number, color: string, opacity: number): s
 
   return `
     <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-          <feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="rgba(0,0,0,0.3)"/>
-        </filter>
-      </defs>
-      <circle cx="${centerX}" cy="${centerY}" r="${radius + 1}" fill="${color}" opacity="${0.6}"/>
+      <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="${color}" opacity="${0.5}"/>
     </svg>
   `;
 };

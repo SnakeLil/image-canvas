@@ -28,6 +28,7 @@ export interface MaskCanvasProps {
   onHistoryStateChange?: (history: string[], historyIndex: number) => void;
   onStartDrawing?: () => void;
   onStopDrawing?: () => void;
+  zoom?: number; // Add zoom prop for cursor scaling
 }
 
 export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
@@ -44,6 +45,7 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
       onHistoryStateChange,
       onStartDrawing,
       onStopDrawing,
+      zoom = 1,
     },
     ref
   ) => {
@@ -72,6 +74,21 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
     useEffect(() => {
       brushSettingsRef.current = brushSettings;
     }, [brushSettings]);
+
+    // Calculate actual brush size considering canvas scaling
+    const getActualBrushSize = useCallback(() => {
+      const canvas = maskCanvasRef.current;
+      if (!canvas) return brushSettings.size;
+
+      // Get the ratio between canvas actual size and display size
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const averageScale = (scaleX + scaleY) / 2;
+
+      // Return brush size scaled by canvas resolution
+      return brushSettings.size * averageScale;
+    }, [brushSettings.size]);
 
     // Sync history state when props change (image switching)
     useEffect(() => {
@@ -113,13 +130,13 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
         from: { x: number; y: number },
         to: { x: number; y: number }
       ) => {
-        const currentBrushSize = brushSettingsRef.current.size;
+        const actualBrushSize = getActualBrushSize();
         const distance = Math.sqrt(
           Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2)
         );
         const steps = Math.max(
           1,
-          Math.floor(distance / (currentBrushSize / 4))
+          Math.floor(distance / (actualBrushSize / 4))
         );
 
         for (let i = 0; i <= steps; i++) {
@@ -128,11 +145,11 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
           const y = from.y + (to.y - from.y) * t;
 
           ctx.beginPath();
-          ctx.arc(x, y, currentBrushSize / 2, 0, Math.PI * 2);
+          ctx.arc(x, y, actualBrushSize / 2, 0, Math.PI * 2);
           ctx.fill();
         }
       },
-      []
+      [getActualBrushSize]
     );
 
     // Initialize canvas
@@ -315,6 +332,7 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
         if (!ctx) return;
 
         const currentBrush = brushSettingsRef.current;
+        const actualBrushSize = getActualBrushSize();
 
         ctx.globalCompositeOperation = "source-over";
         ctx.fillStyle = currentBrush.color;
@@ -325,7 +343,7 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
           ctx.arc(
             lastDrawPoint.x,
             lastDrawPoint.y,
-            currentBrush.size / 2,
+            actualBrushSize / 2,
             0,
             Math.PI * 2
           );
@@ -337,7 +355,7 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
           drawLine(ctx, previousDrawPoint, { x: clampedX, y: clampedY });
         } else {
           ctx.beginPath();
-          ctx.arc(clampedX, clampedY, currentBrush.size / 2, 0, Math.PI * 2);
+          ctx.arc(clampedX, clampedY, actualBrushSize / 2, 0, Math.PI * 2);
           ctx.fill();
         }
 
@@ -350,6 +368,7 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
         lastDrawPoint,
         previousDrawPoint,
         drawLine,
+        getActualBrushSize,
       ]
     );
 
@@ -479,6 +498,28 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
       canRedo: historyIndex < history.length - 1,
     }));
 
+    // Calculate cursor size based on brush size and zoom level
+    const getCursorSize = () => {
+      const canvas = maskCanvasRef.current;
+      if (!canvas) {
+        // Fallback when canvas is not available
+        const scaledSize = brushSettings.size * zoom;
+        return Math.max(8, Math.min(scaledSize, 120));
+      }
+
+      // Get the ratio between canvas display size and actual size
+      const rect = canvas.getBoundingClientRect();
+      const displayToActualRatio = rect.width / canvas.width;
+
+      // Calculate the cursor size that matches the actual brush size on screen
+      // The brush size is applied to canvas coordinates, so we need to scale it back to display coordinates
+      const actualBrushSize = getActualBrushSize();
+      const cursorSize = actualBrushSize * displayToActualRatio * zoom;
+
+      // Ensure cursor is visible and usable
+      return Math.max(8, Math.min(cursorSize, 120));
+    };
+
     return (
       <div className="absolute inset-0" style={{ width: canvasSize.width, height: canvasSize.height }}>
         <canvas
@@ -492,13 +533,13 @@ export const MaskCanvas = React.forwardRef<any, MaskCanvasProps>(
               ? "grabbing"
               : brushSettings.shape === "circle"
               ? createDynamicCircleCursor(
-                  Math.max(20, brushSettings.size),
+                  getCursorSize(),
                   brushSettings.color,
                   brushSettings.opacity
                 )
               : createMagicWandCursor(
                   brushSettings.shape,
-                  Math.max(20, brushSettings.size)
+                  getCursorSize()
                 ),
             pointerEvents: isPanning ? "none" : "auto",
             transition: "opacity 0.2s ease-in-out",
