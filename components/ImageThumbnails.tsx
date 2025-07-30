@@ -16,6 +16,8 @@ interface ImageThumbnailsProps {
   processingStates: Record<string, boolean>;
   backgroundRemovedResults?: Record<string, string>;
   backgroundProcessingStates?: Record<string, boolean>;
+  backgroundBlurredResults?: Record<string, string>;
+  backgroundBlurProcessingStates?: Record<string, boolean>;
 }
 
 export const ImageThumbnails: React.FC<ImageThumbnailsProps> = ({
@@ -28,7 +30,9 @@ export const ImageThumbnails: React.FC<ImageThumbnailsProps> = ({
   processedResults,
   processingStates,
   backgroundRemovedResults = {},
-  backgroundProcessingStates = {}
+  backgroundProcessingStates = {},
+  backgroundBlurredResults = {},
+  backgroundBlurProcessingStates = {}
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -126,9 +130,11 @@ export const ImageThumbnails: React.FC<ImageThumbnailsProps> = ({
             const isSelected = image.id === currentImageId;
             const hasProcessedResult = processedResults[image.id];
             const hasBackgroundRemovedResult = backgroundRemovedResults[image.id];
+            const hasBackgroundBlurredResult = backgroundBlurredResults[image.id];
             const isProcessing = processingStates[image.id] || false;
             const isBackgroundProcessing = backgroundProcessingStates[image.id] || false;
-            const isAnyProcessing = isProcessing || isBackgroundProcessing;
+            const isBackgroundBlurProcessing = backgroundBlurProcessingStates[image.id] || false;
+            const isAnyProcessing = isProcessing || isBackgroundProcessing || isBackgroundBlurProcessing;
             
             return (
               <div
@@ -163,7 +169,7 @@ export const ImageThumbnails: React.FC<ImageThumbnailsProps> = ({
                   <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center z-10">
                     <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
                   </div>
-                ) : (hasProcessedResult || hasBackgroundRemovedResult) ? (
+                ) : (hasProcessedResult || hasBackgroundRemovedResult || hasBackgroundBlurredResult) ? (
                   <div className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center z-10">
                     <div className="w-2 h-2 bg-white rounded-full"></div>
                   </div>
@@ -172,6 +178,13 @@ export const ImageThumbnails: React.FC<ImageThumbnailsProps> = ({
                 {/* Background removed indicator */}
                 {hasBackgroundRemovedResult && !isAnyProcessing && (
                   <div className="absolute top-1 left-1 w-4 h-4 bg-purple-500 rounded-full border-2 border-white flex items-center justify-center z-10">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                  </div>
+                )}
+
+                {/* Background blurred indicator */}
+                {hasBackgroundBlurredResult && !isAnyProcessing && (
+                  <div className="absolute bottom-1 left-1 w-4 h-4 bg-orange-500 rounded-full border-2 border-white flex items-center justify-center z-10">
                     <div className="w-2 h-2 bg-white rounded-full"></div>
                   </div>
                 )}

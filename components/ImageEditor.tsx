@@ -849,6 +849,8 @@ export const ImageEditor: React.FC = () => {
             processingStates={project.processingStates}
             backgroundRemovedResults={project.backgroundRemovedResults}
             backgroundProcessingStates={project.backgroundProcessingStates}
+            backgroundBlurredResults={project.backgroundBlurredResults}
+            backgroundBlurProcessingStates={project.backgroundBlurProcessingStates}
           />
         </div>
       )}
