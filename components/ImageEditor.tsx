@@ -841,6 +841,10 @@ export const ImageEditor: React.FC = () => {
                 getCurrentBackgroundBlurProcessingState()
               }
               onShowHelp={handleShowHelp}
+              currentImageDimensions={currentImage ? {
+                width: currentImage.width,
+                height: currentImage.height
+              } : undefined}
             />
           </div>
 

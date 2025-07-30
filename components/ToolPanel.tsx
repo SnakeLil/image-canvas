@@ -4,8 +4,9 @@ import React, { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BrushControls } from "./BrushControls";
-import { Download, HelpCircle, Maximize2, X, Image } from "lucide-react";
+import { Download, HelpCircle, Maximize2, X, Image, ChevronDown, Eye, Zap } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FireworksEffect } from "./FireworksEffect";
 
 interface ToolPanelProps {
@@ -33,6 +34,10 @@ interface ToolPanelProps {
   isBackgroundBlurProcessing?: boolean;
   disabled?: boolean;
   onShowHelp?: () => void;
+  currentImageDimensions?: {
+    width: number;
+    height: number;
+  };
 }
 
 export const ToolPanel: React.FC<ToolPanelProps> = ({
@@ -47,6 +52,7 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
   isBackgroundBlurProcessing = false,
   disabled = false,
   onShowHelp,
+  currentImageDimensions,
 }) => {
   const [showFire, setShowFire] = useState(false);
   // Use the finalResult from props (based on timestamps)
@@ -60,6 +66,65 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const hasCelebrate = useRef(false);
+
+  // Calculate dimensions for different quality options
+  const calculateDimensions = () => {
+    if (!currentImageDimensions) {
+      return {
+        preview: { width: 800, height: 600 },
+        max: { width: 1920, height: 1080 }
+      };
+    }
+
+    const { width, height } = currentImageDimensions;
+    const aspectRatio = width / height;
+
+    // Preview quality: scale down to max 800px on longest side
+    let previewWidth, previewHeight;
+    if (width > height) {
+      previewWidth = Math.min(width, 800);
+      previewHeight = Math.round(previewWidth / aspectRatio);
+    } else {
+      previewHeight = Math.min(height, 800);
+      previewWidth = Math.round(previewHeight * aspectRatio);
+    }
+
+    // Max quality: scale up to max 1920px on longest side, but don't exceed original
+    let maxWidth, maxHeight;
+    if (width > height) {
+      maxWidth = Math.min(width, 1920);
+      maxHeight = Math.round(maxWidth / aspectRatio);
+    } else {
+      maxHeight = Math.min(height, 1920);
+      maxWidth = Math.round(maxHeight * aspectRatio);
+    }
+
+    return {
+      preview: { width: previewWidth, height: previewHeight },
+      max: { width: maxWidth, height: maxHeight }
+    };
+  };
+
+  const dimensions = calculateDimensions();
+
+  // Handle download with quality selection
+  const handleDownload = (quality: 'preview' | 'max') => {
+    const url = getFinalResultUrl();
+    if (!url) return;
+
+    const fileName = getFinalResultType() === "final"
+      ? `final-result-${quality}.png`
+      : getFinalResultType() === "inpaint"
+      ? `processed-image-${quality}.png`
+      : `background-removed-${quality}.png`;
+
+    // For now, use the same download logic for both qualities
+    // In the future, this could be enhanced to actually resize the image
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+  };
 
   const handleCelebrate = () => {
     setShowFire(true);
@@ -258,37 +323,65 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
             </div>
 
             {getFinalResultUrl() && (
-              <Button
-                asChild
-                className={`w-full text-white shadow-sm ${
-                  getFinalResultType() === "final"
-                    ? "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                    : getFinalResultType() === "inpaint"
-                    ? "bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
-                    : "bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
-                }`}
-                size="sm"
-              >
-                <a
-                  href={getFinalResultUrl()!}
-                  download={
-                    getFinalResultType() === "final"
-                      ? "final-result.png"
-                      : getFinalResultType() === "inpaint"
-                      ? "processed-image.png"
-                      : "background-removed.png"
-                  }
-                  className="flex items-center justify-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Download{" "}
-                  {getFinalResultType() === "final"
-                    ? "Final Result"
-                    : getFinalResultType() === "inpaint"
-                    ? "Result"
-                    : "Background Removed"}
-                </a>
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    className={`w-full text-white shadow-sm ${
+                      getFinalResultType() === "final"
+                        ? "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                        : getFinalResultType() === "inpaint"
+                        ? "bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+                        : "bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
+                    }`}
+                    size="sm"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                    <ChevronDown className="w-4 h-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-64 p-2">
+                  <DropdownMenuItem
+                    onClick={() => handleDownload('preview')}
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                        <Eye className="w-4 h-4 text-gray-600" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">Preview</div>
+                        <div className="text-sm text-gray-500">
+                          {dimensions.preview.width} x {dimensions.preview.height}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                      Free
+                    </div>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => handleDownload('max')}
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 rounded-lg mt-1"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                        <Zap className="w-4 h-4 text-yellow-600" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">Max</div>
+                        <div className="text-sm text-gray-500">
+                          {dimensions.max.width} x {dimensions.max.height}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full font-medium">
+                      Unlock
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </Card>
         )}
