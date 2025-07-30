@@ -3,6 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { Plus, X, Download, Sparkles } from 'lucide-react';
 import type { ImageData } from './ImageEditor';
+import { downloadFile } from '@/lib/download-utils';
 
 interface ImageThumbnailsProps {
   images: ImageData[];
@@ -193,10 +194,7 @@ export const ImageThumbnails: React.FC<ImageThumbnailsProps> = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      const link = document.createElement('a');
-                      link.href = processedResults[image.id];
-                      link.download = `processed-${image.name}`;
-                      link.click();
+                      downloadFile(processedResults[image.id], `processed-${image.name}`);
                     }}
                     className="absolute bottom-0 right-0 w-5 h-5 bg-blue-500 hover:bg-blue-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10 shadow-lg"
                   >

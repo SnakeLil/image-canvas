@@ -20,6 +20,8 @@ import {
   Focus,
 } from "lucide-react";
 import type { ImageData } from "./ImageEditor";
+import { calculateObjectCover } from "@/lib/image-utils";
+import { createSolidColorCanvas } from "@/lib/color-utils";
 
 interface CanvasEditorProps {
   imageData: ImageData;
@@ -147,17 +149,9 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
       return;
     }
 
-    // Create a solid color background with image dimensions
-    const canvas = document.createElement("canvas");
-    canvas.width = imageData.width;
-    canvas.height = imageData.height;
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.fillStyle = color;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      const dataURL = canvas.toDataURL();
-      onReplaceBackground(dataURL);
-    }
+    // Create a solid color background using utility function
+    const dataURL = createSolidColorCanvas(imageData.width, imageData.height, color);
+    onReplaceBackground(dataURL);
   }, [onReplaceBackground, imageData.width, imageData.height, backgroundRemovedImageUrl]);
 
   const handleImageSelect = useCallback(async (imageUrl: string) => {
@@ -187,25 +181,10 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
       const ctx = canvas.getContext("2d");
 
       if (ctx) {
-        // Calculate object-cover dimensions for background image
-        const bgAspectRatio = img.width / img.height;
-        const canvasAspectRatio = imageData.width / imageData.height;
-
-        let drawWidth, drawHeight, drawX, drawY;
-
-        if (bgAspectRatio > canvasAspectRatio) {
-          // Background is wider than canvas - fit to height and crop sides
-          drawHeight = imageData.height;
-          drawWidth = imageData.height * bgAspectRatio;
-          drawX = (imageData.width - drawWidth) / 2;
-          drawY = 0;
-        } else {
-          // Background is taller than canvas - fit to width and crop top/bottom
-          drawWidth = imageData.width;
-          drawHeight = imageData.width / bgAspectRatio;
-          drawX = 0;
-          drawY = (imageData.height - drawHeight) / 2;
-        }
+        // Calculate object-cover dimensions using utility function
+        const imageDimensions = { width: img.width, height: img.height };
+        const canvasDimensions = { width: imageData.width, height: imageData.height };
+        const { drawWidth, drawHeight, drawX, drawY } = calculateObjectCover(imageDimensions, canvasDimensions);
 
         // Draw the background image with object-cover behavior
         ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);

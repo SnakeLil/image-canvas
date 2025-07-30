@@ -1,21 +1,51 @@
+import { calculateAspectRatioFit, calculateObjectCover, type Dimensions, type ObjectCoverResult } from './image-utils';
+
 export interface Point {
   x: number;
   y: number;
 }
 
 export class CanvasUtils {
+  /**
+   * @deprecated 使用 image-utils 中的 calculateAspectRatioFit 函数
+   */
   static resizeCanvas(canvas: HTMLCanvasElement, maxWidth: number, maxHeight: number): { width: number; height: number } {
-    const aspectRatio = canvas.width / canvas.height;
-    
-    let newWidth = maxWidth;
-    let newHeight = maxWidth / aspectRatio;
-    
-    if (newHeight > maxHeight) {
-      newHeight = maxHeight;
-      newWidth = maxHeight * aspectRatio;
-    }
-    
-    return { width: newWidth, height: newHeight };
+    return calculateAspectRatioFit(
+      { width: canvas.width, height: canvas.height },
+      maxWidth,
+      maxHeight
+    );
+  }
+
+  /**
+   * 使用object-cover方式在Canvas上绘制图片
+   * @param ctx Canvas上下文
+   * @param image 图片元素
+   * @param canvasDimensions Canvas尺寸
+   */
+  static drawImageWithObjectCover(
+    ctx: CanvasRenderingContext2D,
+    image: HTMLImageElement,
+    canvasDimensions: Dimensions
+  ): void {
+    const imageDimensions = { width: image.width, height: image.height };
+    const { drawWidth, drawHeight, drawX, drawY } = calculateObjectCover(imageDimensions, canvasDimensions);
+
+    ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  }
+
+  /**
+   * 创建新的Canvas元素
+   * @param width 宽度
+   * @param height 高度
+   * @returns Canvas元素和上下文
+   */
+  static createCanvas(width: number, height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D | null } {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    return { canvas, ctx };
   }
 
   static drawSmoothLine(

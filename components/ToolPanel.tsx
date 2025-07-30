@@ -8,6 +8,8 @@ import { Download, HelpCircle, Maximize2, X, Image, ChevronDown, Eye, Zap } from
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FireworksEffect } from "./FireworksEffect";
+import { calculateQualityDimensions } from "@/lib/image-utils";
+import { downloadFile, generateFileName } from "@/lib/download-utils";
 
 interface ToolPanelProps {
   brushSettings: {
@@ -67,63 +69,21 @@ export const ToolPanel: React.FC<ToolPanelProps> = ({
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const hasCelebrate = useRef(false);
 
-  // Calculate dimensions for different quality options
-  const calculateDimensions = () => {
-    if (!currentImageDimensions) {
-      return {
-        preview: { width: 800, height: 600 },
-        max: { width: 1920, height: 1080 }
-      };
-    }
+  // Calculate dimensions for different quality options using utility function
+  const dimensions = calculateQualityDimensions(currentImageDimensions);
 
-    const { width, height } = currentImageDimensions;
-    const aspectRatio = width / height;
-
-    // Preview quality: scale down to max 800px on longest side
-    let previewWidth, previewHeight;
-    if (width > height) {
-      previewWidth = Math.min(width, 800);
-      previewHeight = Math.round(previewWidth / aspectRatio);
-    } else {
-      previewHeight = Math.min(height, 800);
-      previewWidth = Math.round(previewHeight * aspectRatio);
-    }
-
-    // Max quality: scale up to max 1920px on longest side, but don't exceed original
-    let maxWidth, maxHeight;
-    if (width > height) {
-      maxWidth = Math.min(width, 1920);
-      maxHeight = Math.round(maxWidth / aspectRatio);
-    } else {
-      maxHeight = Math.min(height, 1920);
-      maxWidth = Math.round(maxHeight * aspectRatio);
-    }
-
-    return {
-      preview: { width: previewWidth, height: previewHeight },
-      max: { width: maxWidth, height: maxHeight }
-    };
-  };
-
-  const dimensions = calculateDimensions();
-
-  // Handle download with quality selection
+  // Handle download with quality selection using utility functions
   const handleDownload = (quality: 'preview' | 'max') => {
     const url = getFinalResultUrl();
     if (!url) return;
 
-    const fileName = getFinalResultType() === "final"
-      ? `final-result-${quality}.png`
-      : getFinalResultType() === "inpaint"
-      ? `processed-image-${quality}.png`
-      : `background-removed-${quality}.png`;
+    const fileName = generateFileName(
+      getFinalResultType(),
+      quality,
+      'png'
+    );
 
-    // For now, use the same download logic for both qualities
-    // In the future, this could be enhanced to actually resize the image
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.click();
+    downloadFile(url, fileName);
   };
 
   const handleCelebrate = () => {

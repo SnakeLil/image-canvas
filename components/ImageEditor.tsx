@@ -14,6 +14,7 @@ import { useInstructions } from "../hooks/useInstructions";
 import { Card } from "@/components/ui/card";
 import { type AIProvider } from "@/lib/ai-services";
 import { removeBackground, blurBackground, adjustBlurIntensity, canvasToBase64, compositeWithBackground } from "@/lib/background-removal";
+import { blobToBase64 } from "@/lib/image-utils";
 import { DragOverlay } from "./DragOverlay";
 
 export interface ImageData {
@@ -257,20 +258,8 @@ export const ImageEditor: React.FC = () => {
     [handleImageUpload, handleMultipleImageUpload]
   );
 
-  // Helper function to convert File/Blob to base64 (IOPaint format)
-  const convertToBase64 = (fileOrBlob: File | Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64String = event.target?.result as string;
-        resolve(base64String);
-      };
-      reader.onerror = (error) => {
-        reject(error);
-      };
-      reader.readAsDataURL(fileOrBlob);
-    });
-  };
+  // Helper function to convert File/Blob to base64 (IOPaint format) - using utility function
+  const convertToBase64 = blobToBase64;
 
   const handleProcessImage = useCallback(
     async (maskCanvas: HTMLCanvasElement) => {

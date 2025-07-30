@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import type { ImageData } from "./ImageEditor";
+import { calculateAspectRatioFit } from "@/lib/image-utils";
 
 export interface ImageCanvasProps {
   imageData: ImageData;
@@ -35,15 +36,12 @@ export const ImageCanvas: React.FC<ImageCanvasProps> = ({
 
     if (!ctx) return;
 
-    // Calculate canvas size with maximum constraints
-    const aspectRatio = imageData.width / imageData.height;
-    let newWidth = Math.min(imageData.width, MAX_CANVAS_WIDTH);
-    let newHeight = newWidth / aspectRatio;
-
-    if (newHeight > MAX_CANVAS_HEIGHT) {
-      newHeight = MAX_CANVAS_HEIGHT;
-      newWidth = newHeight * aspectRatio;
-    }
+    // Calculate canvas size with maximum constraints using utility function
+    const { width: newWidth, height: newHeight } = calculateAspectRatioFit(
+      { width: imageData.width, height: imageData.height },
+      MAX_CANVAS_WIDTH,
+      MAX_CANVAS_HEIGHT
+    );
 
     // Batch all canvas operations in a single frame
     requestAnimationFrame(() => {
