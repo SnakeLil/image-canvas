@@ -4,6 +4,7 @@ import React, { useRef, useEffect, useState, useCallback } from "react";
 import { ZoomControls } from "./ZoomControls";
 import { ImageCanvas } from "./ImageCanvas";
 import { MaskCanvas, type MaskState, type BrushSettings } from "./MaskCanvas";
+import { BackgroundSelector } from "./BackgroundSelector";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -134,6 +135,88 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
     }
   }, [onClearAll]);
 
+  // Background selection handlers
+  const handleColorSelect = useCallback((color: string) => {
+    if (!onReplaceBackground) return;
+
+    if (color === 'transparent') {
+      // For transparent, just use the background removed image
+      if (backgroundRemovedImageUrl) {
+        onReplaceBackground(backgroundRemovedImageUrl);
+      }
+      return;
+    }
+
+    // Create a solid color background with image dimensions
+    const canvas = document.createElement("canvas");
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const dataURL = canvas.toDataURL();
+      onReplaceBackground(dataURL);
+    }
+  }, [onReplaceBackground, imageData.width, imageData.height, backgroundRemovedImageUrl]);
+
+  const handleImageSelect = useCallback(async (imageUrl: string) => {
+    if (!onReplaceBackground) return;
+
+    try {
+      // If it's the original image URL, use it directly
+      if (imageUrl === imageData.url) {
+        onReplaceBackground(imageUrl);
+        return;
+      }
+
+      // For other images, create a background with object-cover behavior
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imageUrl;
+      });
+
+      // Create canvas with original image dimensions
+      const canvas = document.createElement("canvas");
+      canvas.width = imageData.width;
+      canvas.height = imageData.height;
+      const ctx = canvas.getContext("2d");
+
+      if (ctx) {
+        // Calculate object-cover dimensions for background image
+        const bgAspectRatio = img.width / img.height;
+        const canvasAspectRatio = imageData.width / imageData.height;
+
+        let drawWidth, drawHeight, drawX, drawY;
+
+        if (bgAspectRatio > canvasAspectRatio) {
+          // Background is wider than canvas - fit to height and crop sides
+          drawHeight = imageData.height;
+          drawWidth = imageData.height * bgAspectRatio;
+          drawX = (imageData.width - drawWidth) / 2;
+          drawY = 0;
+        } else {
+          // Background is taller than canvas - fit to width and crop top/bottom
+          drawWidth = imageData.width;
+          drawHeight = imageData.width / bgAspectRatio;
+          drawX = 0;
+          drawY = (imageData.height - drawHeight) / 2;
+        }
+
+        // Draw the background image with object-cover behavior
+        ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+        const dataURL = canvas.toDataURL();
+        onReplaceBackground(dataURL);
+      }
+    } catch (error) {
+      console.error('Error processing background image:', error);
+    }
+  }, [onReplaceBackground, imageData.width, imageData.height, imageData.url]);
+
   const handleProcess = useCallback(() => {
     if (maskCanvasRef.current?.getCanvas) {
       const canvas = maskCanvasRef.current.getCanvas();
@@ -207,6 +290,8 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
       }
     };
   }, []);
+
+
 
   // Close background selector when clicking outside
   useEffect(() => {
@@ -412,68 +497,29 @@ const CanvasEditorComponent: React.FC<CanvasEditorProps> = ({
 
             {/* Background replacement dropdown */}
             {backgroundRemovedImageUrl && onReplaceBackground && (
-              <div
-                ref={backgroundSelectorRef}
-                className="relative inline-block ml-1"
-              >
+              <div ref={backgroundSelectorRef} className="relative inline-block ml-1">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    setShowBackgroundSelector(!showBackgroundSelector)
-                  }
+                  onClick={() => setShowBackgroundSelector(!showBackgroundSelector)}
                   disabled={disabled || isBackgroundProcessing || isBackgroundBlurProcessing}
                   className="border-purple-300 text-purple-700 hover:bg-purple-50"
                   title="Replace background"
                 >
                   <Palette className="w-4 h-4 mr-1" />
-                  <ChevronDown className="w-3 h-3" />
+                  Background
+                  <ChevronDown className="w-3 h-3 ml-1" />
                 </Button>
 
-                {/* Background selector dropdown */}
-                {showBackgroundSelector && (
-                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                    <div className="p-3">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">
-                        Choose Background
-                      </h4>
-                      <div className="grid grid-cols-4 gap-2">
-                        {/* Predefined backgrounds */}
-                        {[
-                          { name: "White", color: "#ffffff" },
-                          { name: "Black", color: "#000000" },
-                          { name: "Blue", color: "#3b82f6" },
-                          { name: "Green", color: "#10b981" },
-                          { name: "Red", color: "#ef4444" },
-                          { name: "Purple", color: "#8b5cf6" },
-                          { name: "Yellow", color: "#f59e0b" },
-                          { name: "Gray", color: "#6b7280" },
-                        ].map((bg) => (
-                          <button
-                            key={bg.name}
-                            onClick={() => {
-                              // Create a solid color background with image dimensions
-                              const canvas = document.createElement("canvas");
-                              canvas.width = imageData.width;
-                              canvas.height = imageData.height;
-                              const ctx = canvas.getContext("2d");
-                              if (ctx) {
-                                ctx.fillStyle = bg.color;
-                                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                                const dataURL = canvas.toDataURL();
-                                onReplaceBackground?.(dataURL);
-                              }
-                              setShowBackgroundSelector(false);
-                            }}
-                            className="w-12 h-12 rounded border-2 border-gray-200 hover:border-gray-400 transition-colors"
-                            style={{ backgroundColor: bg.color }}
-                            title={bg.name}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Background Selector Dropdown */}
+                <BackgroundSelector
+                  isOpen={showBackgroundSelector}
+                  onClose={() => setShowBackgroundSelector(false)}
+                  onSelectColor={handleColorSelect}
+                  onSelectImage={handleImageSelect}
+                  originalImageUrl={imageData.url}
+                  disabled={disabled || isBackgroundProcessing || isBackgroundBlurProcessing}
+                />
               </div>
             )}
 

@@ -13,7 +13,7 @@ import { InstructionsModal } from "./InstructionsModal";
 import { useInstructions } from "../hooks/useInstructions";
 import { Card } from "@/components/ui/card";
 import { type AIProvider } from "@/lib/ai-services";
-import { removeBackground, blurBackground, adjustBlurIntensity, canvasToBase64 } from "@/lib/background-removal";
+import { removeBackground, blurBackground, adjustBlurIntensity, canvasToBase64, compositeWithBackground } from "@/lib/background-removal";
 import { DragOverlay } from "./DragOverlay";
 
 export interface ImageData {
@@ -535,49 +535,20 @@ export const ImageEditor: React.FC = () => {
       try {
         setError(null);
 
-        // Create canvas for compositing
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          throw new Error("Failed to get canvas context");
+        // Check if this is the transparent background (same as background removed image)
+        if (backgroundUrl === currentOriginalBackgroundRemovedUrl) {
+          // For transparent background, directly use the background removed image
+          replaceBackground(currentImage.id, backgroundUrl);
+          return;
         }
 
-        // Set canvas size to match original image
-        canvas.width = currentImage.width;
-        canvas.height = currentImage.height;
-
-        // Load background image (it's a data URL from canvas)
-        const backgroundImg = new Image();
-        await new Promise((resolve, reject) => {
-          backgroundImg.onload = resolve;
-          backgroundImg.onerror = reject;
-          backgroundImg.src = backgroundUrl;
-        });
-
-        // Load the background-removed foreground image
-        const foregroundImg = new Image();
-        foregroundImg.crossOrigin = "anonymous";
-        await new Promise((resolve, reject) => {
-          foregroundImg.onload = resolve;
-          foregroundImg.onerror = reject;
-          foregroundImg.src = currentOriginalBackgroundRemovedUrl;
-        });
-
-        // Composite the images
-        // 1. Draw background (already sized correctly)
-        ctx.drawImage(backgroundImg, 0, 0);
-
-        // 2. Draw foreground (background-removed image) on top
-        ctx.drawImage(
-          foregroundImg,
-          0,
-          0,
+        // Use the new compositeWithBackground function for other backgrounds
+        const resultImageUrl = await compositeWithBackground(
+          currentOriginalBackgroundRemovedUrl,
+          backgroundUrl,
           currentImage.width,
           currentImage.height
         );
-
-        // Convert result to blob URL
-        const resultImageUrl = canvas.toDataURL();
 
         // Store the background replaced result for the current image
         replaceBackground(currentImage.id, resultImageUrl);

@@ -132,7 +132,7 @@ export const replaceBackground = async (
   try {
     // First remove the background
     const removedBgImage = await removeBackground(originalImageBase64, options);
-    
+
     // Then composite with new background
     return new Promise((resolve, reject) => {
       const canvas = document.createElement('canvas');
@@ -155,7 +155,7 @@ export const replaceBackground = async (
 
           // Draw background (scaled to fit)
           ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
-          
+
           // Draw foreground (removed background image) on top
           ctx.drawImage(fgImg, 0, 0);
 
@@ -167,7 +167,7 @@ export const replaceBackground = async (
 
       bgImg.onload = onImageLoad;
       fgImg.onload = onImageLoad;
-      
+
       bgImg.onerror = () => reject(new Error('Failed to load background image'));
       fgImg.onerror = () => reject(new Error('Failed to load foreground image'));
 
@@ -178,6 +178,78 @@ export const replaceBackground = async (
     console.error('Background replacement error:', error);
     throw error;
   }
+};
+
+// Composite foreground with background (using pre-removed background image)
+export const compositeWithBackground = async (
+  foregroundImageUrl: string, // URL of the image with background already removed
+  backgroundImageUrl: string, // URL of the background image or data URL
+  targetWidth: number,
+  targetHeight: number
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('Failed to get canvas context'));
+      return;
+    }
+
+    const bgImg = new Image();
+    const fgImg = new Image();
+    let loadedCount = 0;
+
+    const onImageLoad = () => {
+      loadedCount++;
+      if (loadedCount === 2) {
+        // Set canvas size to target dimensions
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        // Calculate object-cover dimensions for background image
+        const bgAspectRatio = bgImg.width / bgImg.height;
+        const canvasAspectRatio = targetWidth / targetHeight;
+
+        let drawWidth, drawHeight, drawX, drawY;
+
+        if (bgAspectRatio > canvasAspectRatio) {
+          // Background is wider than canvas - fit to height and crop sides
+          drawHeight = targetHeight;
+          drawWidth = targetHeight * bgAspectRatio;
+          drawX = (targetWidth - drawWidth) / 2;
+          drawY = 0;
+        } else {
+          // Background is taller than canvas - fit to width and crop top/bottom
+          drawWidth = targetWidth;
+          drawHeight = targetWidth / bgAspectRatio;
+          drawX = 0;
+          drawY = (targetHeight - drawHeight) / 2;
+        }
+
+        // Draw background with object-cover behavior
+        ctx.drawImage(bgImg, drawX, drawY, drawWidth, drawHeight);
+
+        // Draw foreground (removed background image) on top
+        ctx.drawImage(fgImg, 0, 0, targetWidth, targetHeight);
+
+        const resultDataURL = canvas.toDataURL('image/png');
+        resolve(resultDataURL);
+      }
+    };
+
+    bgImg.onload = onImageLoad;
+    fgImg.onload = onImageLoad;
+
+    bgImg.onerror = () => reject(new Error('Failed to load background image'));
+    fgImg.onerror = () => reject(new Error('Failed to load foreground image'));
+
+    // Handle cross-origin images
+    bgImg.crossOrigin = 'anonymous';
+    fgImg.crossOrigin = 'anonymous';
+
+    bgImg.src = backgroundImageUrl;
+    fgImg.src = foregroundImageUrl;
+  });
 };
 
 // Blur background by removing background and compositing with blurred original
